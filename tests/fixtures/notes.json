@@ -1,0 +1,12 @@
+{
+  "tempo": 120,
+  "time_unit": "seconds",
+  "instrument": 0,
+  "channel": 0,
+  "velocity": 96,
+  "notes": [
+    {"pitch": 60, "name": "C4", "start": 0.0, "duration": 0.25},
+    {"pitch": 64, "name": "E4", "start": 0.25, "duration": 0.25},
+    {"pitch": 67, "name": "G4", "start": 0.5, "duration": 0.5}
+  ]
+}

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+
+# Generated pipeline artifacts
+output/notes.json
+output/transcription.mid
+output/source_audio/
+

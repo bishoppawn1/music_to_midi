@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "notes.schema.json",
+  "title": "Transcribed musical notes",
+  "type": "object",
+  "required": ["schema_version", "tempo", "time_unit", "channel", "instrument", "velocity", "notes"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "tempo": { "type": "number", "exclusiveMinimum": 0 },
+    "time_unit": { "const": "seconds" },
+    "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "instrument": { "type": "integer", "minimum": 0, "maximum": 127 },
+    "velocity": { "type": "integer", "minimum": 1, "maximum": 127 },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pitch", "name", "start", "duration", "velocity"],
+        "properties": {
+          "pitch": { "type": "integer", "minimum": 0, "maximum": 127 },
+          "name": { "type": "string", "pattern": "^[A-G](#)?-?[0-9]+$" },
+          "start": { "type": "number", "minimum": 0 },
+          "duration": { "type": "number", "minimum": 0 },
+          "velocity": { "type": "integer", "minimum": 1, "maximum": 127 },
+          "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+          "instrument": { "type": "integer", "minimum": 0, "maximum": 127 },
+          "pitch_bend": { "type": "array", "items": { "type": "integer" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source": { "type": "object" },
+    "tempo_metadata": { "type": "object" },
+    "render_defaults_metadata": { "type": "object" },
+    "transcription": { "type": "object" },
+    "created_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}

@@ -8,6 +8,21 @@ Standard MIDI file.
 End users do not install anything. They paste a link, wait for the five visible
 processing steps, optionally preview the result, and download the MIDI.
 
+## Deployment
+
+The app deploys directly to Cloudflare Workers, which provides a public
+`workers.dev` address and runs the `/api/audio` route required for YouTube
+links. It is not configured as a ChatGPT Site.
+
+After authenticating the maintainer's Cloudflare account, deploy with:
+
+```sh
+npm run deploy:cloudflare
+```
+
+This setup work is only for the maintainer. Visitors still need only a browser
+and a YouTube link.
+
 ## Development
 
 ```sh

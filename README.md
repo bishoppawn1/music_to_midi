@@ -1,15 +1,13 @@
 # Audio-to-MIDI pipeline
 
-## Use the web app
+## Web app
 
-**[Open Link to MIDI](https://link-to-midi.bishop-e-hall.chatgpt.site)**
+Paste a public YouTube link and download the resulting MIDI. End users install
+nothing: the transcription model runs in the visitor's browser. The web app is
+configured for a public Cloudflare Workers address rather than a ChatGPT Sites
+address; deployment instructions are in [`web/README.md`](web/README.md).
 
-Paste a public YouTube link and download the resulting MIDI. The hosted app
-requires no installation and runs the transcription model in the visitor's
-browser. It also joins duplicate-looking same-pitch retriggers before producing
-the file.
-
-The source for the hosted interface lives in [`web/`](web/). The command-line
+The source for the interface lives in [`web/`](web/). The command-line
 pipeline below remains available for local use and development.
 
 This project implements three independent stages with explicit file handoffs:

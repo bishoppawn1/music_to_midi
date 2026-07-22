@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
+import { cleanRetriggers, type CleanNote } from "./note-cleanup";
 
 type Phase =
   | "idle"
@@ -10,13 +11,6 @@ type Phase =
   | "cleaning"
   | "ready"
   | "error";
-
-type CleanNote = {
-  startTimeSeconds: number;
-  durationSeconds: number;
-  pitchMidi: number;
-  amplitude: number;
-};
 
 type Result = {
   title: string;
@@ -64,55 +58,6 @@ async function resampleToMono(buffer: AudioBuffer) {
   source.start();
   const rendered = await offline.startRendering();
   return new Float32Array(rendered.getChannelData(0));
-}
-
-function rms(samples: Float32Array, start: number, end: number) {
-  const from = Math.max(0, Math.floor(start));
-  const to = Math.min(samples.length, Math.ceil(end));
-  if (to <= from) return 0;
-  let sum = 0;
-  for (let index = from; index < to; index += 1) {
-    sum += samples[index] * samples[index];
-  }
-  return Math.sqrt(sum / (to - from));
-}
-
-function hasFreshAttack(samples: Float32Array, time: number) {
-  const center = time * SAMPLE_RATE;
-  const before = rms(samples, center - SAMPLE_RATE * 0.055, center - SAMPLE_RATE * 0.01);
-  const after = rms(samples, center, center + SAMPLE_RATE * 0.045);
-  return after > 0.012 && after > before * 1.22;
-}
-
-function cleanRetriggers(notes: CleanNote[], samples: Float32Array) {
-  const ordered = [...notes].sort(
-    (left, right) =>
-      left.startTimeSeconds - right.startTimeSeconds || left.pitchMidi - right.pitchMidi,
-  );
-  const cleaned: CleanNote[] = [];
-  const latestByPitch = new Map<number, CleanNote>();
-  let merged = 0;
-
-  for (const sourceNote of ordered) {
-    const note = { ...sourceNote };
-    const previous = latestByPitch.get(note.pitchMidi);
-    if (previous) {
-      const previousEnd = previous.startTimeSeconds + previous.durationSeconds;
-      const gap = note.startTimeSeconds - previousEnd;
-      if (gap >= -0.015 && gap <= 0.025 && !hasFreshAttack(samples, note.startTimeSeconds)) {
-        previous.durationSeconds =
-          Math.max(previousEnd, note.startTimeSeconds + note.durationSeconds) -
-          previous.startTimeSeconds;
-        previous.amplitude = Math.max(previous.amplitude, note.amplitude);
-        merged += 1;
-        continue;
-      }
-    }
-    cleaned.push(note);
-    latestByPitch.set(note.pitchMidi, note);
-  }
-
-  return { notes: cleaned, merged };
 }
 
 async function makeMidi(notes: CleanNote[]) {
@@ -255,16 +200,23 @@ export default function Home() {
       );
 
       setPhase("cleaning");
-      const rawNotes = basicPitchModule.noteFramesToTime(
-        basicPitchModule.addPitchBendsToNoteEvents(
-          contours,
-          basicPitchModule.outputToNotesPoly(frames, onsets, 0.62, 0.25, 11),
-        ),
-      ).map((note) => ({
+      const frameNotes = basicPitchModule.outputToNotesPoly(
+        frames,
+        onsets,
+        0.62,
+        0.25,
+        11,
+      );
+      const timedNotes = basicPitchModule.noteFramesToTime(
+        basicPitchModule.addPitchBendsToNoteEvents(contours, frameNotes),
+      );
+      const rawNotes = timedNotes.map((note, index) => ({
         startTimeSeconds: note.startTimeSeconds,
         durationSeconds: note.durationSeconds,
         pitchMidi: note.pitchMidi,
         amplitude: note.amplitude,
+        onsetConfidence:
+          onsets[frameNotes[index].startFrame]?.[frameNotes[index].pitchMidi - 21] ?? 0,
       }));
       const cleaned = cleanRetriggers(rawNotes, samples);
       if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");

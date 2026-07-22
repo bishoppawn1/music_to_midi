@@ -1,5 +1,17 @@
 # Audio-to-MIDI pipeline
 
+## Use the web app
+
+**[Open Link to MIDI](https://link-to-midi.bishop-e-hall.chatgpt.site)**
+
+Paste a public YouTube link and download the resulting MIDI. The hosted app
+requires no installation and runs the transcription model in the visitor's
+browser. It also joins duplicate-looking same-pitch retriggers before producing
+the file.
+
+The source for the hosted interface lives in [`web/`](web/). The command-line
+pipeline below remains available for local use and development.
+
 This project implements three independent stages with explicit file handoffs:
 
 1. `stages/youtube_to_notes/youtube_to_notes.py` downloads one authorized
@@ -66,4 +78,3 @@ result through the playback stage.
 Stage-specific details are in
 [stages/youtube_to_notes/README.md](stages/youtube_to_notes/README.md),
 [NOTES_TO_MIDI.md](NOTES_TO_MIDI.md), and [PLAYBACK.md](PLAYBACK.md).
-

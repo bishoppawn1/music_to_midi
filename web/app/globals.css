@@ -149,6 +149,7 @@ h1 em {
 }
 
 .process-panel,
+.video-stage,
 .capture-guide,
 .recording-card,
 .result-card {
@@ -156,6 +157,33 @@ h1 em {
   border: 1px solid var(--ink);
   background: rgba(255,255,255,.55);
 }
+.video-stage {
+  overflow: hidden;
+  background: var(--ink);
+}
+.video-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+.video-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.video-caption {
+  padding: 13px 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  color: rgba(255,255,255,.58);
+  font: 700 10px/1.2 monospace;
+  letter-spacing: .09em;
+}
+.video-caption span:first-child { color: var(--acid); }
 .capture-guide,
 .recording-card {
   padding: clamp(24px, 4vw, 40px);
@@ -317,7 +345,7 @@ footer p { margin: 0; color: rgba(255,255,255,.55); font-size: 12px; }
   .hero { padding-top: 78px; }
   .input-row { grid-template-columns: 1fr; }
   .input-row button { min-height: 58px; justify-content: space-between; }
-  .form-foot, .capture-guide, .recording-card, .result-heading, footer {
+  .form-foot, .video-caption, .capture-guide, .recording-card, .result-heading, footer {
     align-items: flex-start;
     flex-direction: column;
   }

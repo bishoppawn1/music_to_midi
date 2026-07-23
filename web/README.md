@@ -1,20 +1,22 @@
 # Link to MIDI web app
 
-The GitHub Pages interface accepts one YouTube link, opens the video, captures
-audio from the tab after the visitor grants browser permission, transcribes it
-with Spotify Basic Pitch, cleans likely duplicate retriggers, and produces a
-downloadable Standard MIDI file.
+The GitHub Pages interface accepts one YouTube link, embeds its player, captures
+audio from that same tab after the visitor grants browser permission,
+transcribes it with Spotify Basic Pitch, cleans likely duplicate retriggers,
+and produces a downloadable Standard MIDI file.
 
 End users do not install anything or create an account. They:
 
-1. Paste a YouTube link and open the video.
-2. Pause the video at the desired start.
-3. Return to Link to MIDI and click **Capture tab audio**.
-4. Select the YouTube tab and enable **Share tab audio**.
-5. Play the desired section, then click **Stop and make MIDI**.
+1. Paste a YouTube link and load the embedded player.
+2. Pause the player at the desired start.
+3. Click **Capture this tab**.
+4. Select the current Link to MIDI tab and enable **Share tab audio**.
+5. Play the embedded video, then click **Stop and make MIDI**.
 6. Preview and download the result.
 
-The captured audio and transcription stay in the browser.
+The player, captured audio, and transcription stay in one browser tab. If a
+video owner has disabled embedding, the interface provides a link to open that
+video directly on YouTube and use the two-tab fallback.
 
 ## Deployment
 

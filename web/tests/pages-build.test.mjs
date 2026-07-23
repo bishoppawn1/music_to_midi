@@ -17,6 +17,11 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /getDisplayMedia/);
   assert.match(page, /MediaRecorder/);
   assert.match(page, /Share tab audio/);
+  assert.match(page, /youtube\.com\/embed/);
+  assert.match(page, /preferCurrentTab:\s*true/);
+  assert.match(page, /selfBrowserSurface:\s*"include"/);
+  assert.match(page, /suppressLocalAudioPlayback:\s*false/);
+  assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);
 

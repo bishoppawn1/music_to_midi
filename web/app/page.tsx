@@ -83,6 +83,14 @@ function parseYouTubeUrl(value: string) {
   return { parsed, videoId };
 }
 
+function youtubeEmbedUrl(videoId: string) {
+  const parameters = new URLSearchParams({
+    playsinline: "1",
+    rel: "0",
+  });
+  return `https://www.youtube.com/embed/${videoId}?${parameters}`;
+}
+
 function recorderOptions(): MediaRecorderOptions | undefined {
   const mimeType = [
     "audio/webm;codecs=opus",
@@ -129,6 +137,7 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceVideoId, setSourceVideoId] = useState("");
   const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -206,11 +215,12 @@ export default function Home() {
     setMessage("");
     setSourceTitle("");
     setSourceUrl("");
+    setSourceVideoId("");
     setCaptureSeconds(0);
     setPhase("idle");
   }
 
-  function openVideo(event: FormEvent<HTMLFormElement>) {
+  function loadVideo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     stopPreview();
     if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
@@ -222,8 +232,8 @@ export default function Home() {
       const { parsed, videoId } = parseYouTubeUrl(url);
       setSourceTitle(`YouTube capture ${videoId}`);
       setSourceUrl(parsed.toString());
+      setSourceVideoId(videoId);
       setPhase("armed");
-      window.open(parsed.toString(), "_blank", "noopener,noreferrer");
     } catch {
       setPhase("error");
       setMessage("Paste a complete YouTube or youtu.be link.");
@@ -350,17 +360,18 @@ export default function Home() {
       setPhase("sharing");
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: "browser" },
-        audio: true,
-        preferCurrentTab: false,
-        selfBrowserSurface: "exclude",
+        audio: { suppressLocalAudioPlayback: false },
+        preferCurrentTab: true,
+        selfBrowserSurface: "include",
         surfaceSwitching: "exclude",
-        systemAudio: "include",
+        systemAudio: "exclude",
+        monitorTypeSurfaces: "exclude",
       } as DisplayMediaStreamOptions);
 
       const audioTracks = stream.getAudioTracks();
       if (!audioTracks.length) {
         stream.getTracks().forEach((track) => track.stop());
-        throw new Error("No audio was shared. Select the YouTube tab and enable “Share tab audio”.");
+        throw new Error("No audio was shared. Select this tab and enable “Share tab audio”.");
       }
 
       const audioStream = new MediaStream(audioTracks);
@@ -423,18 +434,18 @@ export default function Home() {
           <span className="brand-mark" aria-hidden="true">↗</span>
           LINK TO MIDI
         </a>
-        <span className="local-badge">LOCAL TAB CAPTURE</span>
+        <span className="local-badge">SINGLE-TAB CAPTURE</span>
       </nav>
 
       <section className="hero" id="top">
         <div className="eyebrow"><span /> AUDIO TRANSCRIPTION, WITHOUT A SERVER</div>
-        <h1>Share the tab.<br /><em>Keep the music.</em></h1>
+        <h1>Play it here.<br /><em>Keep the music.</em></h1>
         <p className="lede">
           Turn an authorized YouTube performance into an editable MIDI file.
-          The audio and transcription stay in your browser.
+          The player, capture, and transcription stay together in one browser tab.
         </p>
 
-        <form className="converter" onSubmit={openVideo}>
+        <form className="converter" onSubmit={loadVideo}>
           <label htmlFor="youtube-url">YouTube URL</label>
           <div className="input-row">
             <input
@@ -449,25 +460,43 @@ export default function Home() {
               required
             />
             <button type="submit" disabled={busy}>
-              Open YouTube
-              <span aria-hidden="true">↗</span>
+              Load video
+              <span aria-hidden="true">↓</span>
             </button>
           </div>
           <div className="form-foot">
-            <span>Open the video, pause it at the start, then return here.</span>
-            <span>Desktop tab capture · up to 10 minutes</span>
+            <span>The YouTube player appears here—no tab switching required.</span>
+            <span>Single-tab audio capture · up to 10 minutes</span>
           </div>
         </form>
+
+        {["armed", "sharing", "recording"].includes(phase) && sourceVideoId && (
+          <section className="video-stage" aria-label="YouTube source video">
+            <div className="video-frame">
+              <iframe
+                src={youtubeEmbedUrl(sourceVideoId)}
+                title="YouTube video player"
+                allow="autoplay; encrypted-media; picture-in-picture"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+            <div className="video-caption">
+              <span>YOUTUBE SOURCE</span>
+              <span>Cue the music before starting capture</span>
+            </div>
+          </section>
+        )}
 
         {(phase === "armed" || phase === "sharing") && (
           <section className="capture-guide" aria-live="polite">
             <div>
-              <div className="capture-kicker">NEXT: SHARE THE YOUTUBE TAB</div>
-              <h2>{phase === "sharing" ? "Choose the YouTube tab." : "Pause the video at the start."}</h2>
+              <div className="capture-kicker">NEXT: CAPTURE THIS TAB</div>
+              <h2>{phase === "sharing" ? "Choose this Link to MIDI tab." : "Cue the video at the start."}</h2>
               <ol>
-                <li>Return here and click the capture button.</li>
-                <li>Select the YouTube tab and enable <strong>Share tab audio</strong>.</li>
-                <li>Play the video, then come back and stop the capture.</li>
+                <li>Pause the player just before the music you want.</li>
+                <li>Click capture, select this tab, and keep <strong>Share tab audio</strong> enabled.</li>
+                <li>Play the video above, then stop the capture here.</li>
               </ol>
               {message && <p className="capture-message">{message}</p>}
             </div>
@@ -478,7 +507,7 @@ export default function Home() {
                 onClick={startCapture}
                 disabled={phase === "sharing"}
               >
-                {phase === "sharing" ? "Choose the tab…" : "Capture tab audio"}
+                {phase === "sharing" ? "Choose this tab…" : "Capture this tab"}
               </button>
               <a
                 className="text-button"
@@ -486,7 +515,7 @@ export default function Home() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Open YouTube again ↗
+                Open on YouTube instead ↗
               </a>
               <button type="button" className="text-button" onClick={reset}>
                 Start over
@@ -500,7 +529,7 @@ export default function Home() {
             <div>
               <div className="recording-kicker"><span /> RECORDING TAB AUDIO</div>
               <h2>{formatDuration(captureSeconds)}</h2>
-              <p>Play the YouTube video now. Stop when the music you want has finished.</p>
+              <p>Play the video above. Stop when the music you want has finished.</p>
             </div>
             <button type="button" className="stop-button" onClick={stopCapture}>
               Stop and make MIDI
@@ -572,18 +601,18 @@ export default function Home() {
       <section className="how-it-works" aria-labelledby="how-title">
         <div>
           <p className="section-number">01 / 03</p>
-          <h2 id="how-title">You control exactly<br />what gets captured.</h2>
+          <h2 id="how-title">One tab from link<br />to piano roll.</h2>
         </div>
         <div className="method-grid">
           <article>
             <span>01</span>
-            <h3>Open</h3>
-            <p>Paste the link, open YouTube, and pause at the beginning of the music.</p>
+            <h3>Load</h3>
+            <p>Paste the link and cue the embedded player at the beginning of the music.</p>
           </article>
           <article>
             <span>02</span>
             <h3>Capture</h3>
-            <p>Share that tab with audio, play the section, and stop when it is finished.</p>
+            <p>Share this tab with audio, play the section, and stop when it is finished.</p>
           </article>
           <article>
             <span>03</span>

@@ -5,10 +5,11 @@
 **[Open Link to MIDI](https://bishoppawn1.github.io/music_to_midi/)**
 
 Paste a public YouTube link and download the resulting MIDI. End users install
-nothing: they open and pause the video, share that YouTube tab with audio, play
-the desired section, and stop the capture. Note detection and MIDI generation
-run locally in the visitor's browser. The web app is served entirely by GitHub
-Pages and has no hosted audio bridge. Details are in [`web/README.md`](web/README.md).
+nothing: the video loads inside the converter, they share that same tab with
+audio, play the desired section, and stop the capture. Note detection and MIDI
+generation run locally in the visitor's browser. The web app is served entirely
+by GitHub Pages and has no hosted audio bridge. Details are in
+[`web/README.md`](web/README.md).
 
 The source for the interface lives in [`web/`](web/). The command-line
 pipeline below remains available for local use and development.

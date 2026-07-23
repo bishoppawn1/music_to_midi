@@ -11,9 +11,9 @@ export default defineConfig({
     emptyOutDir: false,
     rollupOptions: {
       output: {
-        entryFileNames: "site-assets/app.js",
-        chunkFileNames: "site-assets/[name].js",
-        assetFileNames: "site-assets/[name][extname]",
+        entryFileNames: "site-assets/app-[hash].js",
+        chunkFileNames: "site-assets/[name]-[hash].js",
+        assetFileNames: "site-assets/[name]-[hash][extname]",
       },
     },
   },

@@ -1,12 +1,20 @@
 # Link to MIDI web app
 
-The hosted interface accepts one public YouTube link, streams its audio through
-the application, transcribes it with Spotify Basic Pitch in the visitor's
-browser, cleans likely duplicate retriggers, and produces a downloadable
-Standard MIDI file.
+The GitHub Pages interface accepts one YouTube link, opens the video, captures
+audio from the tab after the visitor grants browser permission, transcribes it
+with Spotify Basic Pitch, cleans likely duplicate retriggers, and produces a
+downloadable Standard MIDI file.
 
-End users do not install anything. They paste a link, wait for the five visible
-processing steps, optionally preview the result, and download the MIDI.
+End users do not install anything or create an account. They:
+
+1. Paste a YouTube link and open the video.
+2. Pause the video at the desired start.
+3. Return to Link to MIDI and click **Capture tab audio**.
+4. Select the YouTube tab and enable **Share tab audio**.
+5. Play the desired section, then click **Stop and make MIDI**.
+6. Preview and download the result.
+
+The captured audio and transcription stay in the browser.
 
 ## Deployment
 
@@ -17,18 +25,7 @@ Pages:
 npm run build:pages
 ```
 
-The `/api/audio` route required for YouTube links deploys to Cloudflare
-Workers. It is not configured as a ChatGPT Site. Set `VITE_AUDIO_API_ORIGIN` to
-that Worker's origin when building the Pages application.
-
-After authenticating the maintainer's Cloudflare account, deploy with:
-
-```sh
-npm run deploy:cloudflare
-```
-
-This setup work is only for the maintainer. Visitors still need only a browser
-and a YouTube link.
+There is no Cloudflare Worker, ChatGPT Site, or other application backend.
 
 ## Development
 
@@ -38,6 +35,7 @@ npm run dev
 npm test
 ```
 
-The app supports public YouTube videos up to ten minutes. Automatic music
-transcription is most accurate on recordings dominated by one instrument.
-Only convert media you have permission to use.
+The app captures up to ten minutes at a time. Tab-audio sharing support varies
+by browser, so a current desktop browser is recommended. Automatic music
+transcription is most accurate on recordings dominated by one instrument. Only
+capture media you have permission to use.

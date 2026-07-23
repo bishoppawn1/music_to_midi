@@ -5,7 +5,9 @@ import { cleanRetriggers, type CleanNote } from "./note-cleanup";
 
 type Phase =
   | "idle"
-  | "fetching"
+  | "armed"
+  | "sharing"
+  | "recording"
   | "decoding"
   | "listening"
   | "cleaning"
@@ -21,11 +23,20 @@ type Result = {
   filename: string;
 };
 
+type CaptureSession = {
+  recorder: MediaRecorder;
+  stream: MediaStream;
+  chunks: Blob[];
+  title: string;
+  startedAt: number;
+  intervalId: number;
+  finished: boolean;
+};
+
 const SAMPLE_RATE = 22_050;
+const MAX_CAPTURE_SECONDS = 10 * 60;
 const PUBLIC_BASE = import.meta.env.BASE_URL || "/";
-const AUDIO_API_ORIGIN = (import.meta.env.VITE_AUDIO_API_ORIGIN || "").replace(/\/$/, "");
-const STEPS: Array<{ phase: Phase; label: string }> = [
-  { phase: "fetching", label: "Fetch audio" },
+const PROCESS_STEPS: Array<{ phase: Phase; label: string }> = [
   { phase: "decoding", label: "Prepare sound" },
   { phase: "listening", label: "Hear the notes" },
   { phase: "cleaning", label: "Clean repeats" },
@@ -33,7 +44,7 @@ const STEPS: Array<{ phase: Phase; label: string }> = [
 ];
 
 function phaseIndex(phase: Phase) {
-  return STEPS.findIndex((step) => step.phase === phase);
+  return PROCESS_STEPS.findIndex((step) => step.phase === phase);
 }
 
 function formatDuration(seconds: number) {
@@ -49,6 +60,37 @@ function safeFilename(title: string) {
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
   return `${clean || "transcription"}.mid`;
+}
+
+function parseYouTubeUrl(value: string) {
+  const parsed = new URL(value.trim());
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+  if (!["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)) {
+    throw new Error("not youtube");
+  }
+
+  let videoId = "";
+  if (host === "youtu.be") {
+    videoId = parsed.pathname.split("/").filter(Boolean)[0] || "";
+  } else if (parsed.pathname === "/watch") {
+    videoId = parsed.searchParams.get("v") || "";
+  } else {
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (["shorts", "embed", "live"].includes(parts[0])) videoId = parts[1] || "";
+  }
+
+  if (!/^[a-zA-Z0-9_-]{6,20}$/.test(videoId)) throw new Error("missing video id");
+  return { parsed, videoId };
+}
+
+function recorderOptions(): MediaRecorderOptions | undefined {
+  const mimeType = [
+    "audio/webm;codecs=opus",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/webm",
+    "audio/mp4",
+  ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+  return mimeType ? { mimeType } : undefined;
 }
 
 async function resampleToMono(buffer: AudioBuffer) {
@@ -85,12 +127,16 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
+  const [sourceTitle, setSourceTitle] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const captureRef = useRef<CaptureSession | null>(null);
   const previewContext = useRef<AudioContext | null>(null);
   const previewNodes = useRef<AudioScheduledSourceNode[]>([]);
 
-  const busy = !["idle", "ready", "error"].includes(phase);
+  const busy = ["sharing", "recording", "decoding", "listening", "cleaning"].includes(phase);
 
   function stopPreview() {
     for (const node of previewNodes.current) {
@@ -144,7 +190,27 @@ export default function Home() {
     window.setTimeout(() => stopPreview(), Math.max(0, finalTime - context.currentTime) * 1000 + 100);
   }
 
-  async function convert(event: FormEvent<HTMLFormElement>) {
+  function reset() {
+    stopPreview();
+    const capture = captureRef.current;
+    captureRef.current = null;
+    if (capture) {
+      capture.finished = true;
+      window.clearInterval(capture.intervalId);
+      if (capture.recorder.state !== "inactive") capture.recorder.stop();
+      capture.stream.getTracks().forEach((track) => track.stop());
+    }
+    if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
+    setResult(null);
+    setProgress(0);
+    setMessage("");
+    setSourceTitle("");
+    setSourceUrl("");
+    setCaptureSeconds(0);
+    setPhase("idle");
+  }
+
+  function openVideo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     stopPreview();
     if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
@@ -152,40 +218,29 @@ export default function Home() {
     setMessage("");
     setProgress(0);
 
-    let parsed: URL;
     try {
-      parsed = new URL(url.trim());
-      const host = parsed.hostname.replace(/^www\./, "");
-      if (!["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)) {
-        throw new Error("not youtube");
-      }
+      const { parsed, videoId } = parseYouTubeUrl(url);
+      setSourceTitle(`YouTube capture ${videoId}`);
+      setSourceUrl(parsed.toString());
+      setPhase("armed");
+      window.open(parsed.toString(), "_blank", "noopener,noreferrer");
     } catch {
       setPhase("error");
       setMessage("Paste a complete YouTube or youtu.be link.");
-      return;
     }
+  }
 
+  async function transcribeCapture(blob: Blob, title: string) {
     let audioContext: AudioContext | null = null;
     try {
-      setPhase("fetching");
-      if (!AUDIO_API_ORIGIN && window.location.hostname.endsWith("github.io")) {
-        throw new Error("The audio service still needs its one-time hosting connection.");
-      }
-      const response = await fetch(
-        `${AUDIO_API_ORIGIN}/api/audio?url=${encodeURIComponent(parsed.toString())}`,
-      );
-      if (!response.ok) {
-        const problem = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(problem?.error || "That video could not be opened.");
-      }
-      const audioData = await response.arrayBuffer();
-      const encodedTitle = response.headers.get("x-video-title");
-      const title = encodedTitle ? decodeURIComponent(encodedTitle) : "YouTube transcription";
-      const duration = Number(response.headers.get("x-video-duration") || 0);
-
       setPhase("decoding");
+      setMessage("");
+      const audioData = await blob.arrayBuffer();
       audioContext = new AudioContext();
       const decoded = await audioContext.decodeAudioData(audioData.slice(0));
+      if (decoded.duration < 0.5) {
+        throw new Error("The capture was too short. Record at least a few seconds of music.");
+      }
       const samples = await resampleToMono(decoded);
       await audioContext.close();
       audioContext = null;
@@ -229,10 +284,11 @@ export default function Home() {
       if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");
 
       const midiBytes = await makeMidi(cleaned.notes);
-      const midiBlob = new Blob([midiBytes], { type: "audio/midi" });
+      const midiData = Uint8Array.from(midiBytes);
+      const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
       setResult({
         title,
-        duration: duration || decoded.duration,
+        duration: decoded.duration,
         notes: cleaned.notes,
         merged: cleaned.merged,
         midiUrl: URL.createObjectURL(midiBlob),
@@ -243,7 +299,118 @@ export default function Home() {
     } catch (error) {
       if (audioContext) await audioContext.close();
       setPhase("error");
-      setMessage(error instanceof Error ? error.message : "Conversion stopped unexpectedly.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "The captured audio could not be converted.",
+      );
+    }
+  }
+
+  async function finalizeCapture(session: CaptureSession) {
+    if (session.finished) return;
+    session.finished = true;
+    window.clearInterval(session.intervalId);
+    session.stream.getTracks().forEach((track) => track.stop());
+    const blob = new Blob(session.chunks, {
+      type: session.recorder.mimeType || "audio/webm",
+    });
+    if (blob.size < 1024) {
+      setPhase("error");
+      setMessage("No tab audio was captured. Make sure “Share tab audio” is enabled.");
+      return;
+    }
+    await transcribeCapture(blob, session.title);
+  }
+
+  function stopCapture() {
+    const session = captureRef.current;
+    if (!session) return;
+    captureRef.current = null;
+    window.clearInterval(session.intervalId);
+    if (session.recorder.state !== "inactive") {
+      session.recorder.stop();
+    } else {
+      void finalizeCapture(session);
+    }
+  }
+
+  async function startCapture() {
+    stopPreview();
+    setMessage("");
+    setCaptureSeconds(0);
+
+    if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === "undefined") {
+      setPhase("error");
+      setMessage("This browser does not support tab-audio capture. Try a current desktop browser.");
+      return;
+    }
+
+    try {
+      setPhase("sharing");
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: true,
+        preferCurrentTab: false,
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "exclude",
+        systemAudio: "include",
+      } as DisplayMediaStreamOptions);
+
+      const audioTracks = stream.getAudioTracks();
+      if (!audioTracks.length) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new Error("No audio was shared. Select the YouTube tab and enable “Share tab audio”.");
+      }
+
+      const audioStream = new MediaStream(audioTracks);
+      const options = recorderOptions();
+      const recorder = options
+        ? new MediaRecorder(audioStream, options)
+        : new MediaRecorder(audioStream);
+      const session: CaptureSession = {
+        recorder,
+        stream,
+        chunks: [],
+        title: sourceTitle || "YouTube tab capture",
+        startedAt: Date.now(),
+        intervalId: 0,
+        finished: false,
+      };
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size) session.chunks.push(event.data);
+      });
+      recorder.addEventListener("stop", () => void finalizeCapture(session), { once: true });
+      stream.getTracks().forEach((track) => {
+        track.addEventListener(
+          "ended",
+          () => {
+            if (captureRef.current === session) stopCapture();
+          },
+          { once: true },
+        );
+      });
+
+      captureRef.current = session;
+      recorder.start(1000);
+      session.intervalId = window.setInterval(() => {
+        const seconds = Math.floor((Date.now() - session.startedAt) / 1000);
+        setCaptureSeconds(seconds);
+        if (seconds >= MAX_CAPTURE_SECONDS) stopCapture();
+      }, 250);
+      setPhase("recording");
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        ["AbortError", "NotAllowedError"].includes(error.name)
+      ) {
+        setPhase("armed");
+        setMessage("Sharing was canceled. Click the capture button when you are ready.");
+        return;
+      }
+      setPhase("error");
+      setMessage(error instanceof Error ? error.message : "Tab sharing could not start.");
     }
   }
 
@@ -256,18 +423,18 @@ export default function Home() {
           <span className="brand-mark" aria-hidden="true">↗</span>
           LINK TO MIDI
         </a>
-        <span className="local-badge">RUNS IN YOUR BROWSER</span>
+        <span className="local-badge">LOCAL TAB CAPTURE</span>
       </nav>
 
       <section className="hero" id="top">
-        <div className="eyebrow"><span /> AUDIO TRANSCRIPTION, WITHOUT THE SETUP</div>
-        <h1>Paste the link.<br /><em>Keep the music.</em></h1>
+        <div className="eyebrow"><span /> AUDIO TRANSCRIPTION, WITHOUT A SERVER</div>
+        <h1>Share the tab.<br /><em>Keep the music.</em></h1>
         <p className="lede">
-          Turn a public YouTube performance into an editable MIDI file. No app,
-          no account, no command line.
+          Turn an authorized YouTube performance into an editable MIDI file.
+          The audio and transcription stay in your browser.
         </p>
 
-        <form className="converter" onSubmit={convert}>
+        <form className="converter" onSubmit={openVideo}>
           <label htmlFor="youtube-url">YouTube URL</label>
           <div className="input-row">
             <input
@@ -282,44 +449,99 @@ export default function Home() {
               required
             />
             <button type="submit" disabled={busy}>
-              {busy ? "Listening…" : "Make MIDI"}
-              <span aria-hidden="true">→</span>
+              Open YouTube
+              <span aria-hidden="true">↗</span>
             </button>
           </div>
           <div className="form-foot">
-            <span>Best with solo piano, guitar, voice, or other single instruments.</span>
-            <span>Public videos · up to 10 minutes</span>
+            <span>Open the video, pause it at the start, then return here.</span>
+            <span>Desktop tab capture · up to 10 minutes</span>
           </div>
         </form>
 
-        {phase !== "idle" && (
-          <section className={`process-panel ${phase === "error" ? "has-error" : ""}`} aria-live="polite">
-            {phase === "error" ? (
-              <div className="error-line">
-                <span aria-hidden="true">!</span>
-                <p>{message}</p>
-                <button type="button" onClick={() => setPhase("idle")}>Try again</button>
+        {(phase === "armed" || phase === "sharing") && (
+          <section className="capture-guide" aria-live="polite">
+            <div>
+              <div className="capture-kicker">NEXT: SHARE THE YOUTUBE TAB</div>
+              <h2>{phase === "sharing" ? "Choose the YouTube tab." : "Pause the video at the start."}</h2>
+              <ol>
+                <li>Return here and click the capture button.</li>
+                <li>Select the YouTube tab and enable <strong>Share tab audio</strong>.</li>
+                <li>Play the video, then come back and stop the capture.</li>
+              </ol>
+              {message && <p className="capture-message">{message}</p>}
+            </div>
+            <div className="capture-actions">
+              <button
+                type="button"
+                className="capture-button"
+                onClick={startCapture}
+                disabled={phase === "sharing"}
+              >
+                {phase === "sharing" ? "Choose the tab…" : "Capture tab audio"}
+              </button>
+              <a
+                className="text-button"
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open YouTube again ↗
+              </a>
+              <button type="button" className="text-button" onClick={reset}>
+                Start over
+              </button>
+            </div>
+          </section>
+        )}
+
+        {phase === "recording" && (
+          <section className="recording-card" aria-live="polite">
+            <div>
+              <div className="recording-kicker"><span /> RECORDING TAB AUDIO</div>
+              <h2>{formatDuration(captureSeconds)}</h2>
+              <p>Play the YouTube video now. Stop when the music you want has finished.</p>
+            </div>
+            <button type="button" className="stop-button" onClick={stopCapture}>
+              Stop and make MIDI
+            </button>
+          </section>
+        )}
+
+        {["decoding", "listening", "cleaning", "ready"].includes(phase) && (
+          <section className="process-panel" aria-live="polite">
+            <ol className="steps">
+              {PROCESS_STEPS.map((step, index) => (
+                <li
+                  key={step.phase}
+                  className={
+                    index < currentStep || phase === "ready"
+                      ? "done"
+                      : index === currentStep
+                        ? "active"
+                        : ""
+                  }
+                >
+                  <span>{index < currentStep || phase === "ready" ? "✓" : index + 1}</span>
+                  {step.label}
+                </li>
+              ))}
+            </ol>
+            {phase === "listening" && (
+              <div className="progress-track" aria-label={`Transcription ${progress}% complete`}>
+                <span style={{ width: `${progress}%` }} />
               </div>
-            ) : (
-              <>
-                <ol className="steps">
-                  {STEPS.map((step, index) => (
-                    <li
-                      key={step.phase}
-                      className={index < currentStep || phase === "ready" ? "done" : index === currentStep ? "active" : ""}
-                    >
-                      <span>{index < currentStep || phase === "ready" ? "✓" : index + 1}</span>
-                      {step.label}
-                    </li>
-                  ))}
-                </ol>
-                {phase === "listening" && (
-                  <div className="progress-track" aria-label={`Transcription ${progress}% complete`}>
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                )}
-              </>
             )}
+          </section>
+        )}
+
+        {phase === "error" && (
+          <section className="process-panel has-error" aria-live="polite">
+            <div className="error-line">
+              <span aria-hidden="true">!</span>
+              <p>{message}</p>
+              <button type="button" onClick={reset}>Try again</button>
+            </div>
           </section>
         )}
 
@@ -329,7 +551,10 @@ export default function Home() {
             <div className="result-heading">
               <div>
                 <h2 id="result-title">{result.title}</h2>
-                <p>{result.notes.length} notes · {formatDuration(result.duration)} · {result.merged} duplicate-looking retriggers joined</p>
+                <p>
+                  {result.notes.length} notes · {formatDuration(result.duration)} ·{" "}
+                  {result.merged} duplicate-looking retriggers joined
+                </p>
               </div>
               <div className="result-actions">
                 <button type="button" className="preview-button" onClick={playPreview}>
@@ -347,18 +572,30 @@ export default function Home() {
       <section className="how-it-works" aria-labelledby="how-title">
         <div>
           <p className="section-number">01 / 03</p>
-          <h2 id="how-title">The shortest path from<br />performance to piano roll.</h2>
+          <h2 id="how-title">You control exactly<br />what gets captured.</h2>
         </div>
         <div className="method-grid">
-          <article><span>01</span><h3>Paste</h3><p>Drop in one public YouTube link. The app fetches only the audio it needs.</p></article>
-          <article><span>02</span><h3>Listen</h3><p>A lightweight pitch model hears chords, melody, timing, and dynamics in your browser.</p></article>
-          <article><span>03</span><h3>Edit</h3><p>Download a standard MIDI file for Logic, Ableton, FL Studio, GarageBand, or notation software.</p></article>
+          <article>
+            <span>01</span>
+            <h3>Open</h3>
+            <p>Paste the link, open YouTube, and pause at the beginning of the music.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Capture</h3>
+            <p>Share that tab with audio, play the section, and stop when it is finished.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Edit</h3>
+            <p>Preview and download a standard MIDI file without uploading the recording.</p>
+          </article>
         </div>
       </section>
 
       <footer>
         <span>LINK TO MIDI</span>
-        <p>Only convert media you have permission to use. Processing happens in your browser.</p>
+        <p>Only capture media you have permission to use. Processing stays in your browser.</p>
       </footer>
     </main>
   );

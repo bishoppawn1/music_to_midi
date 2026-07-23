@@ -32,10 +32,15 @@ test("GitHub Pages root is the converter application", async () => {
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);
+  assert.doesNotMatch(packageJson, /clean-pages-assets/);
 
   await Promise.all([
     access(new URL(".nojekyll", root)),
     access(new URL("model/model.json", root)),
   ]);
   assert.ok(assets.some((asset) => /^app-[\w-]+\.js$/.test(asset)));
+  assert.ok(
+    assets.filter((asset) => /^esm-[\w-]+\.js$/.test(asset)).length >= 2,
+    "at least one prior deferred module must remain for already-open pages",
+  );
 });

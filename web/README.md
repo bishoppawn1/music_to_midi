@@ -38,6 +38,9 @@ npm run build:pages
 ```
 
 There is no Cloudflare Worker, ChatGPT Site, or other application backend.
+Hashed files in `site-assets/` are intentionally retained across deployments
+so visitors with an already-open page can still load its deferred transcription
+and MIDI modules after a newer version is published.
 
 ## Development
 

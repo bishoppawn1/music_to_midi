@@ -12,7 +12,8 @@ End users do not install anything or create an account. They:
 3. Click **Capture this tab**.
 4. Select the current Link to MIDI tab and enable **Share tab audio**.
 5. Play the embedded video, then click **Stop and make MIDI**.
-6. Preview and download the result.
+6. Preview and download the result. The MIDI filename includes the download's
+   local date and time, such as `youtube-capture-2026-07-23_02-45-07.mid`.
 
 The player, captured audio, and transcription stay in one browser tab. If a
 video owner has disabled embedding, the interface provides a link to open that

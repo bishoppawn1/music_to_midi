@@ -9,6 +9,7 @@ import {
   SENSITIVITY_OPTIONS,
   type SensitivityId,
 } from "./detection-settings";
+import { makeDownloadFilename } from "./download-filename";
 import { cleanRetriggers, type CleanNote } from "./note-cleanup";
 import {
   applyNoteDirection,
@@ -33,7 +34,7 @@ type Result = {
   notes: CleanNote[];
   merged: number;
   midiUrl: string;
-  filename: string;
+  downloadTitle: string;
   directionLabel: string;
 };
 
@@ -65,15 +66,6 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.round(seconds % 60);
   return `${minutes}:${remainder.toString().padStart(2, "0")}`;
-}
-
-function safeFilename(title: string) {
-  const clean = title
-    .normalize("NFKD")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-  return `${clean || "transcription"}.mid`;
 }
 
 function parseYouTubeUrl(value: string) {
@@ -329,7 +321,7 @@ export default function Home() {
         notes: directedNotes,
         merged: cleaned.merged,
         midiUrl: URL.createObjectURL(midiBlob),
-        filename: safeFilename(isReversed ? `${title}-reverse` : title),
+        downloadTitle: isReversed ? `${title}-reverse` : title,
         directionLabel: isReversed ? "reverse order" : "forward order",
       });
       setProgress(100);
@@ -665,7 +657,14 @@ export default function Home() {
                 <button type="button" className="preview-button" onClick={playPreview}>
                   {isPlaying ? "Stop preview" : "Play preview"}
                 </button>
-                <a className="download-button" href={result.midiUrl} download={result.filename}>
+                <a
+                  className="download-button"
+                  href={result.midiUrl}
+                  download={makeDownloadFilename(result.downloadTitle)}
+                  onClick={(event) => {
+                    event.currentTarget.download = makeDownloadFilename(result.downloadTitle);
+                  }}
+                >
                   Download MIDI <span aria-hidden="true">↓</span>
                 </a>
               </div>

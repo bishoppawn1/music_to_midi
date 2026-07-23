@@ -22,6 +22,8 @@ type Result = {
 };
 
 const SAMPLE_RATE = 22_050;
+const PUBLIC_BASE = import.meta.env.BASE_URL || "/";
+const AUDIO_API_ORIGIN = (import.meta.env.VITE_AUDIO_API_ORIGIN || "").replace(/\/$/, "");
 const STEPS: Array<{ phase: Phase; label: string }> = [
   { phase: "fetching", label: "Fetch audio" },
   { phase: "decoding", label: "Prepare sound" },
@@ -166,7 +168,12 @@ export default function Home() {
     let audioContext: AudioContext | null = null;
     try {
       setPhase("fetching");
-      const response = await fetch(`/api/audio?url=${encodeURIComponent(parsed.toString())}`);
+      if (!AUDIO_API_ORIGIN && window.location.hostname.endsWith("github.io")) {
+        throw new Error("The audio service still needs its one-time hosting connection.");
+      }
+      const response = await fetch(
+        `${AUDIO_API_ORIGIN}/api/audio?url=${encodeURIComponent(parsed.toString())}`,
+      );
       if (!response.ok) {
         const problem = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(problem?.error || "That video could not be opened.");
@@ -188,7 +195,7 @@ export default function Home() {
       const frames: number[][] = [];
       const onsets: number[][] = [];
       const contours: number[][] = [];
-      const basicPitch = new basicPitchModule.BasicPitch("/model/model.json");
+      const basicPitch = new basicPitchModule.BasicPitch(`${PUBLIC_BASE}model/model.json`);
       await basicPitch.evaluateModel(
         samples,
         (newFrames, newOnsets, newContours) => {

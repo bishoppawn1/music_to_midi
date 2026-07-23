@@ -39,12 +39,36 @@ test("server-renders the finished conversion product", async () => {
 
 test("rejects non-YouTube source URLs before making a network request", async () => {
   const response = await (await worker()).fetch(
-    new Request("http://localhost/api/audio?url=https%3A%2F%2Fexample.com%2Fvideo"),
+    new Request("http://localhost/api/audio?url=https%3A%2F%2Fexample.com%2Fvideo", {
+      headers: { origin: "https://bishoppawn1.github.io" },
+    }),
     environment,
     context,
   );
   assert.equal(response.status, 400);
+  assert.equal(
+    response.headers.get("access-control-allow-origin"),
+    "https://bishoppawn1.github.io",
+  );
   assert.deepEqual(await response.json(), { error: "Paste a valid YouTube video link." });
+});
+
+test("allows the GitHub Pages application to call the audio bridge", async () => {
+  const response = await (await worker()).fetch(
+    new Request("http://localhost/api/audio", {
+      method: "OPTIONS",
+      headers: { origin: "https://bishoppawn1.github.io" },
+    }),
+    environment,
+    context,
+  );
+
+  assert.equal(response.status, 204);
+  assert.equal(
+    response.headers.get("access-control-allow-origin"),
+    "https://bishoppawn1.github.io",
+  );
+  assert.match(response.headers.get("access-control-allow-methods") ?? "", /\bGET\b/);
 });
 
 test("ships the transcription model and no starter preview", async () => {

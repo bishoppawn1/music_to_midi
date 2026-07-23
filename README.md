@@ -2,10 +2,13 @@
 
 ## Web app
 
+**[Open Link to MIDI](https://bishoppawn1.github.io/music_to_midi/)**
+
 Paste a public YouTube link and download the resulting MIDI. End users install
 nothing: the transcription model runs in the visitor's browser. The web app is
-configured for a public Cloudflare Workers address rather than a ChatGPT Sites
-address; deployment instructions are in [`web/README.md`](web/README.md).
+served by GitHub Pages, with its audio bridge configured for Cloudflare Workers
+rather than a ChatGPT Sites address. Deployment details are in
+[`web/README.md`](web/README.md).
 
 The source for the interface lives in [`web/`](web/). The command-line
 pipeline below remains available for local use and development.

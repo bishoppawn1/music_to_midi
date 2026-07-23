@@ -10,9 +10,16 @@ processing steps, optionally preview the result, and download the MIDI.
 
 ## Deployment
 
-The app deploys directly to Cloudflare Workers, which provides a public
-`workers.dev` address and runs the `/api/audio` route required for YouTube
-links. It is not configured as a ChatGPT Site.
+The visitor-facing application is built into the repository root for GitHub
+Pages:
+
+```sh
+npm run build:pages
+```
+
+The `/api/audio` route required for YouTube links deploys to Cloudflare
+Workers. It is not configured as a ChatGPT Site. Set `VITE_AUDIO_API_ORIGIN` to
+that Worker's origin when building the Pages application.
 
 After authenticating the maintainer's Cloudflare account, deploy with:
 

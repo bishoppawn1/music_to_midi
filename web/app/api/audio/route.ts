@@ -3,6 +3,15 @@ import { Innertube } from "youtubei.js/cf-worker";
 export const runtime = "edge";
 
 const MAX_DURATION_SECONDS = 10 * 60;
+const PAGES_ORIGIN = "https://bishoppawn1.github.io";
+
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": PAGES_ORIGIN,
+    "access-control-expose-headers": "x-video-title, x-video-duration",
+    vary: "origin",
+  };
+}
 
 function youtubeId(value: string) {
   let url: URL;
@@ -21,7 +30,28 @@ function youtubeId(value: string) {
 }
 
 function problem(error: string, status: number) {
-  return Response.json({ error }, { status, headers: { "cache-control": "no-store" } });
+  return Response.json(
+    { error },
+    {
+      status,
+      headers: {
+        "cache-control": "no-store",
+        ...corsHeaders(),
+      },
+    },
+  );
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-origin": PAGES_ORIGIN,
+      "access-control-max-age": "86400",
+      vary: "origin",
+    },
+  });
 }
 
 export async function GET(request: Request) {
@@ -56,6 +86,7 @@ export async function GET(request: Request) {
       "x-content-type-options": "nosniff",
       "x-video-title": encodeURIComponent(title).slice(0, 1400),
       "x-video-duration": String(duration),
+      ...corsHeaders(),
     });
     if (format.content_length) headers.set("content-length", String(format.content_length));
     return new Response(stream, { status: 200, headers });

@@ -32,9 +32,14 @@ import {
   previewNoteGain,
 } from "./playback-levels";
 import {
+  clampPreviewSpeed,
   clampPreviewTime,
+  MAX_PREVIEW_SPEED,
+  MIN_PREVIEW_SPEED,
   notesForSchedulingWindow,
+  previewPositionAt,
   previewDuration,
+  songTimeToContextTime,
 } from "./preview-timeline";
 import {
   adaptiveDecodeSettings,
@@ -201,6 +206,7 @@ export default function Home() {
   const [result, setResult] = useState<Result | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [previewTime, setPreviewTime] = useState(0);
+  const [previewSpeed, setPreviewSpeed] = useState(1);
   const [selectedNoteIndex, setSelectedNoteIndex] = useState<number | null>(null);
   const captureRef = useRef<CaptureSession | null>(null);
   const previewContext = useRef<AudioContext | null>(null);
@@ -228,9 +234,10 @@ export default function Home() {
     if (resetPosition) setPreviewTime(0);
   }
 
-  function startPreview(requestedOffset: number) {
+  function startPreview(requestedOffset: number, requestedSpeed = previewSpeed) {
     if (!result) return;
     stopPreview();
+    const playbackRate = clampPreviewSpeed(requestedSpeed);
     const previewNotes = result.notes;
     const durationTotal = previewDuration(previewNotes, result.duration);
     const offset =
@@ -255,8 +262,16 @@ export default function Home() {
       const gain = context.createGain();
       const noteEnd = note.startTimeSeconds + note.durationSeconds;
       const audibleStart = Math.max(offset, note.startTimeSeconds);
-      const start = base + audibleStart - offset;
-      const duration = Math.max(0.04, noteEnd - audibleStart);
+      const start = songTimeToContextTime(
+        audibleStart,
+        offset,
+        base,
+        playbackRate,
+      );
+      const duration = Math.max(
+        0.015,
+        (noteEnd - audibleStart) / playbackRate,
+      );
       const level = previewNoteGain(note.amplitude);
       const bends = smoothPitchBends(note.pitchBends ?? []);
       const bendStartIndex = bends.length
@@ -280,11 +295,13 @@ export default function Home() {
           index < bends.length;
           index += bendStep
         ) {
-          const bendTime =
-            base +
+          const bendTime = songTimeToContextTime(
             note.startTimeSeconds +
-            note.durationSeconds * (index / bends.length) -
-            offset;
+              note.durationSeconds * (index / bends.length),
+            offset,
+            base,
+            playbackRate,
+          );
           if (bendTime >= start) {
             oscillator.frequency.linearRampToValueAtTime(
               bendFrequency(note.pitchMidi, bends[index]),
@@ -294,7 +311,10 @@ export default function Home() {
         }
       }
       gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(level, start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(
+        level,
+        start + Math.min(0.012, duration * 0.35),
+      );
       gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
       oscillator.connect(gain);
       gain.connect(master);
@@ -323,7 +343,10 @@ export default function Home() {
       }
     }
 
-    let scheduledThrough = Math.min(durationTotal, offset + 12);
+    let scheduledThrough = Math.min(
+      durationTotal,
+      offset + 12 * playbackRate,
+    );
     scheduleWindow(offset, scheduledThrough, true);
     previewContext.current = context;
     setPreviewTime(offset);
@@ -331,14 +354,22 @@ export default function Home() {
     previewInterval.current = window.setInterval(() => {
       const position = Math.min(
         durationTotal,
-        offset + Math.max(0, context.currentTime - base),
+        previewPositionAt(
+          context.currentTime,
+          base,
+          offset,
+          playbackRate,
+        ),
       );
       setPreviewTime(position);
       if (
         scheduledThrough < durationTotal &&
-        scheduledThrough < position + 8
+        scheduledThrough < position + 8 * playbackRate
       ) {
-        const nextWindowEnd = Math.min(durationTotal, position + 12);
+        const nextWindowEnd = Math.min(
+          durationTotal,
+          position + 12 * playbackRate,
+        );
         scheduleWindow(scheduledThrough, nextWindowEnd);
         scheduledThrough = nextWindowEnd;
       }
@@ -367,6 +398,15 @@ export default function Home() {
     );
     setPreviewTime(nextTime);
     if (wasPlaying) startPreview(nextTime);
+  }
+
+  function changePreviewSpeed(speed: number) {
+    const nextSpeed = clampPreviewSpeed(speed);
+    if (nextSpeed === previewSpeed) return;
+    const wasPlaying = isPlaying;
+    stopPreview();
+    setPreviewSpeed(nextSpeed);
+    if (wasPlaying) startPreview(previewTime, nextSpeed);
   }
 
   function reset() {
@@ -975,6 +1015,44 @@ export default function Home() {
                   <span>{formatDuration(previewTime)}</span>
                   <span>{formatDuration(resultPreviewDuration)}</span>
                 </div>
+              </div>
+              <div
+                className="playback-speed"
+                aria-label="Preview playback speed controls"
+              >
+                <button
+                  type="button"
+                  onClick={() => changePreviewSpeed(previewSpeed - 0.1)}
+                  disabled={previewSpeed <= MIN_PREVIEW_SPEED}
+                  aria-label="Decrease preview speed"
+                  title="Decrease preview speed"
+                >
+                  −
+                </button>
+                <label>
+                  <span>Speed</span>
+                  <input
+                    type="range"
+                    min={MIN_PREVIEW_SPEED}
+                    max={MAX_PREVIEW_SPEED}
+                    step="0.1"
+                    value={previewSpeed}
+                    onChange={(event) =>
+                      changePreviewSpeed(Number(event.target.value))
+                    }
+                    aria-label="Preview playback speed"
+                  />
+                </label>
+                <output aria-live="polite">{previewSpeed.toFixed(1)}×</output>
+                <button
+                  type="button"
+                  onClick={() => changePreviewSpeed(previewSpeed + 0.1)}
+                  disabled={previewSpeed >= MAX_PREVIEW_SPEED}
+                  aria-label="Increase preview speed"
+                  title="Increase preview speed"
+                >
+                  +
+                </button>
               </div>
             </div>
             <section className="note-editor" aria-labelledby="note-editor-title">

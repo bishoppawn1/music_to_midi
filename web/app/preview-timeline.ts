@@ -1,9 +1,42 @@
 import type { CleanNote } from "./note-cleanup";
 
+export const MIN_PREVIEW_SPEED = 0.1;
+export const MAX_PREVIEW_SPEED = 4;
+
 export function previewDuration(notes: CleanNote[], fallbackDuration = 0) {
   return Math.max(
     fallbackDuration,
     ...notes.map((note) => note.startTimeSeconds + note.durationSeconds),
+  );
+}
+
+export function clampPreviewSpeed(speed: number) {
+  if (!Number.isFinite(speed)) return 1;
+  const roundedSpeed = Math.round(speed * 10) / 10;
+  return Math.min(
+    MAX_PREVIEW_SPEED,
+    Math.max(MIN_PREVIEW_SPEED, roundedSpeed),
+  );
+}
+
+export function songTimeToContextTime(
+  songTime: number,
+  offset: number,
+  contextBaseTime: number,
+  speed: number,
+) {
+  return contextBaseTime + (songTime - offset) / clampPreviewSpeed(speed);
+}
+
+export function previewPositionAt(
+  contextTime: number,
+  contextBaseTime: number,
+  offset: number,
+  speed: number,
+) {
+  return (
+    offset +
+    Math.max(0, contextTime - contextBaseTime) * clampPreviewSpeed(speed)
   );
 }
 

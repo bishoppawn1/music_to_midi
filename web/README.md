@@ -68,6 +68,11 @@ correction view. A visitor can jump to any point, select and transpose a note,
 delete a false note, or add a missing note at the playhead. Each correction
 immediately regenerates the downloadable MIDI in the browser.
 
+The preview speed control ranges from **0.1×** to **4.0×** in 0.1× steps. Speed
+changes take effect while the preview is playing, and the playhead continues to
+show the correct position in the song. This only changes the browser preview;
+the downloaded MIDI keeps its original timing.
+
 To reduce stutter, fragments of the same pitch are joined across short gaps only
 when the waveform has no fresh attack and the model does not strongly identify
 a new note. Pitch contours use a small median smoother, and the preview

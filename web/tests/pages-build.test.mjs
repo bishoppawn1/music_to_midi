@@ -59,6 +59,9 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /prepareAudioChannels/);
   assert.match(page, /pitchBendToMidiValue/);
   assert.match(page, /aria-label="Preview position"/);
+  assert.match(page, /aria-label="Preview playback speed"/);
+  assert.match(page, /Decrease preview speed/);
+  assert.match(page, /Increase preview speed/);
   assert.match(page, /Add at playhead/);
   assert.match(page, /scheduleWindow\(offset, scheduledThrough, true\)/);
   assert.match(page, /linearRampToValueAtTime/);
@@ -84,6 +87,8 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(preprocessing, /chooseMonoSignal/);
   assert.match(preprocessing, /normalizeSignal/);
   assert.match(timeline, /playableNotesFrom/);
+  assert.match(timeline, /MIN_PREVIEW_SPEED = 0\.1/);
+  assert.match(timeline, /MAX_PREVIEW_SPEED = 4/);
   assert.match(editing, /transposeNote/);
   assert.match(editing, /deleteNote/);
   assert.match(cleanup, /mergeNoteSpans/);

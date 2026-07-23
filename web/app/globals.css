@@ -378,7 +378,7 @@ h1 em {
   margin-top: 30px;
   padding: 16px;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
   border: 1px solid rgba(255,255,255,.42);
@@ -430,6 +430,54 @@ h1 em {
   justify-content: space-between;
   color: rgba(255,255,255,.7);
   font: 700 11px/1 monospace;
+}
+.playback-speed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.playback-speed button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.7);
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+.playback-speed button:hover:not(:disabled) {
+  border-color: var(--acid);
+  background: var(--acid);
+  color: var(--violet);
+}
+.playback-speed button:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+.playback-speed label {
+  min-width: 120px;
+  display: grid;
+  gap: 5px;
+}
+.playback-speed label span {
+  color: rgba(255,255,255,.72);
+  font: 800 10px/1 monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.playback-speed input[type="range"] {
+  width: 120px;
+  margin: 0;
+  accent-color: var(--acid);
+  cursor: pointer;
+}
+.playback-speed output {
+  min-width: 39px;
+  color: var(--acid);
+  font: 800 12px/1 monospace;
+  text-align: center;
 }
 .note-editor {
   margin-top: 20px;

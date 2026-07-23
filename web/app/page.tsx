@@ -10,6 +10,11 @@ import {
   type SensitivityId,
 } from "./detection-settings";
 import { cleanRetriggers, type CleanNote } from "./note-cleanup";
+import {
+  applyNoteDirection,
+  NOTE_DIRECTION_OPTIONS,
+  type NoteDirection,
+} from "./note-order";
 
 type Phase =
   | "idle"
@@ -29,6 +34,7 @@ type Result = {
   merged: number;
   midiUrl: string;
   filename: string;
+  directionLabel: string;
 };
 
 type CaptureSession = {
@@ -148,6 +154,7 @@ export default function Home() {
   const [sourceVideoId, setSourceVideoId] = useState("");
   const [sensitivity, setSensitivity] = useState<SensitivityId>("balanced");
   const [pitchRange, setPitchRange] = useState<PitchRangeId>("full");
+  const [noteDirection, setNoteDirection] = useState<NoteDirection>("forward");
   const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -311,16 +318,19 @@ export default function Home() {
       const cleaned = cleanRetriggers(rawNotes, samples);
       if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");
 
-      const midiBytes = await makeMidi(cleaned.notes);
+      const directedNotes = applyNoteDirection(cleaned.notes, noteDirection);
+      const isReversed = noteDirection === "reverse";
+      const midiBytes = await makeMidi(directedNotes);
       const midiData = Uint8Array.from(midiBytes);
       const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
       setResult({
         title,
         duration: decoded.duration,
-        notes: cleaned.notes,
+        notes: directedNotes,
         merged: cleaned.merged,
         midiUrl: URL.createObjectURL(midiBlob),
-        filename: safeFilename(title),
+        filename: safeFilename(isReversed ? `${title}-reverse` : title),
+        directionLabel: isReversed ? "reverse order" : "forward order",
       });
       setProgress(100);
       setPhase("ready");
@@ -511,11 +521,26 @@ export default function Home() {
                 ))}
               </select>
             </label>
+            <label>
+              <span>Note direction</span>
+              <select
+                value={noteDirection}
+                onChange={(event) => setNoteDirection(event.target.value as NoteDirection)}
+                disabled={busy}
+              >
+                {NOTE_DIRECTION_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="form-foot">
             <span>
               {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}{" "}
-              {PITCH_RANGE_OPTIONS.find((option) => option.id === pitchRange)?.description}
+              {PITCH_RANGE_OPTIONS.find((option) => option.id === pitchRange)?.description}{" "}
+              {NOTE_DIRECTION_OPTIONS.find((option) => option.id === noteDirection)?.description}
             </span>
             <span>Single-tab audio capture · up to 10 minutes</span>
           </div>
@@ -633,7 +658,7 @@ export default function Home() {
                 <h2 id="result-title">{result.title}</h2>
                 <p>
                   {result.notes.length} notes · {formatDuration(result.duration)} ·{" "}
-                  {result.merged} duplicate-looking retriggers joined
+                  {result.directionLabel} · {result.merged} duplicate-looking retriggers joined
                 </p>
               </div>
               <div className="result-actions">

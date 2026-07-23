@@ -141,7 +141,7 @@ h1 em {
 .input-row button:hover:not(:disabled), .download-button:hover { background: white; }
 .detection-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin-top: 14px;
 }

@@ -28,6 +28,12 @@ mode applies a gradual confidence boost to the lowest and highest model octaves
 so quiet bass and treble notes are less likely to be dropped. A0–C8 is the
 Basic Pitch model's fixed output range.
 
+**Note direction** can leave timing in its original order or mirror the detected
+phrase from last note to first. Reverse mode affects the in-browser preview and
+the downloaded MIDI while preserving chords, note lengths, dynamics, and the
+phrase's overall duration. YouTube's embedded player itself does not expose
+reverse video playback.
+
 ## Deployment
 
 The visitor-facing application is built into the repository root for GitHub

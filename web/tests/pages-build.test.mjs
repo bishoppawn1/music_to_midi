@@ -4,10 +4,11 @@ import test from "node:test";
 
 test("GitHub Pages root is the converter application", async () => {
   const root = new URL("../../", import.meta.url);
-  const [html, page, settings, packageJson, assets] = await Promise.all([
+  const [html, page, settings, noteOrder, packageJson, assets] = await Promise.all([
     readFile(new URL("index.html", root), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/detection-settings.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/note-order.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("site-assets/", root)),
   ]);
@@ -26,9 +27,12 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /Pitch focus/);
   assert.match(page, /useState<SensitivityId>\("balanced"\)/);
   assert.match(page, /recoverPitchEdges\(frames, pitchRange\)/);
+  assert.match(page, /Note direction/);
+  assert.match(page, /applyNoteDirection\(cleaned\.notes, noteDirection\)/);
   assert.match(settings, /onsetThreshold:\s*0\.28/);
   assert.match(settings, /minNoteFrames:\s*3/);
   assert.match(settings, /Wide · A0–C8/);
+  assert.match(noteOrder, /Reverse · last to first/);
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);

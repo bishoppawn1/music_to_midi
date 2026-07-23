@@ -25,8 +25,10 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /Detection detail/);
   assert.match(page, /Pitch focus/);
   assert.match(page, /useState<SensitivityId>\("balanced"\)/);
+  assert.match(page, /recoverPitchEdges\(frames, pitchRange\)/);
   assert.match(settings, /onsetThreshold:\s*0\.28/);
   assert.match(settings, /minNoteFrames:\s*3/);
+  assert.match(settings, /Wide · A0–C8/);
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);

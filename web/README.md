@@ -23,7 +23,10 @@ The default **Balanced** profile recovers substantially more short notes than
 the original settings without accepting every weak activation. Choose **More
 notes** for particularly quiet or fast performances. **Pitch focus** can limit
 detection to the low, middle, or high register when sounds outside the
-instrument's range are creating unwanted notes.
+instrument's range are creating unwanted notes. The default **Wide · A0–C8**
+mode applies a gradual confidence boost to the lowest and highest model octaves
+so quiet bass and treble notes are less likely to be dropped. A0–C8 is the
+Basic Pitch model's fixed output range.
 
 ## Deployment
 

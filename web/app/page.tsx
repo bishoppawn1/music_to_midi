@@ -5,6 +5,7 @@ import {
   getDetectionSettings,
   PITCH_RANGE_OPTIONS,
   type PitchRangeId,
+  recoverPitchEdges,
   SENSITIVITY_OPTIONS,
   type SensitivityId,
 } from "./detection-settings";
@@ -282,9 +283,11 @@ export default function Home() {
 
       setPhase("cleaning");
       const detection = getDetectionSettings(sensitivity, pitchRange);
+      const recoveredFrames = recoverPitchEdges(frames, pitchRange);
+      const recoveredOnsets = recoverPitchEdges(onsets, pitchRange);
       const frameNotes = basicPitchModule.outputToNotesPoly(
-        frames,
-        onsets,
+        recoveredFrames,
+        recoveredOnsets,
         detection.onsetThreshold,
         detection.frameThreshold,
         detection.minNoteFrames,
@@ -301,7 +304,9 @@ export default function Home() {
         pitchMidi: note.pitchMidi,
         amplitude: note.amplitude,
         onsetConfidence:
-          onsets[frameNotes[index].startFrame]?.[frameNotes[index].pitchMidi - 21] ?? 0,
+          recoveredOnsets[frameNotes[index].startFrame]?.[
+            frameNotes[index].pitchMidi - 21
+          ] ?? 0,
       }));
       const cleaned = cleanRetriggers(rawNotes, samples);
       if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");
@@ -509,7 +514,8 @@ export default function Home() {
           </div>
           <div className="form-foot">
             <span>
-              {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}
+              {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}{" "}
+              {PITCH_RANGE_OPTIONS.find((option) => option.id === pitchRange)?.description}
             </span>
             <span>Single-tab audio capture · up to 10 minutes</span>
           </div>

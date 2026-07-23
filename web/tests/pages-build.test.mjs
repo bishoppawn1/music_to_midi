@@ -4,12 +4,13 @@ import test from "node:test";
 
 test("GitHub Pages root is the converter application", async () => {
   const root = new URL("../../", import.meta.url);
-  const [html, page, settings, noteOrder, filename, packageJson, assets] = await Promise.all([
+  const [html, page, settings, noteOrder, filename, playback, packageJson, assets] = await Promise.all([
     readFile(new URL("index.html", root), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/detection-settings.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/note-order.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/download-filename.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/playback-levels.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("site-assets/", root)),
   ]);
@@ -39,6 +40,11 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(filename, /date\.getFullYear\(\)/);
   assert.match(filename, /date\.getHours\(\)/);
   assert.match(filename, /\.mid/);
+  assert.match(page, /compressor\.ratio\.value = 8/);
+  assert.match(page, /midiVelocity\(note\.amplitude\)/);
+  assert.match(page, /previewNoteGain\(note\.amplitude\)/);
+  assert.match(playback, /PREVIEW_MASTER_GAIN = 0\.9/);
+  assert.match(playback, /return 0\.62 \+/);
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);

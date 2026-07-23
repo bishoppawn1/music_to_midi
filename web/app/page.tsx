@@ -16,6 +16,11 @@ import {
   NOTE_DIRECTION_OPTIONS,
   type NoteDirection,
 } from "./note-order";
+import {
+  midiVelocity,
+  PREVIEW_MASTER_GAIN,
+  previewNoteGain,
+} from "./playback-levels";
 
 type Phase =
   | "idle"
@@ -130,7 +135,7 @@ async function makeMidi(notes: CleanNote[]) {
       midi: note.pitchMidi,
       time: Math.max(0, note.startTimeSeconds),
       duration: Math.max(0.03, note.durationSeconds),
-      velocity: Math.min(1, Math.max(0.08, note.amplitude)),
+      velocity: midiVelocity(note.amplitude),
     });
   }
   return midi.toArray();
@@ -178,7 +183,12 @@ export default function Home() {
     const context = new AudioContext();
     const master = context.createGain();
     const compressor = context.createDynamicsCompressor();
-    master.gain.value = 0.18;
+    master.gain.value = PREVIEW_MASTER_GAIN;
+    compressor.threshold.value = -10;
+    compressor.knee.value = 12;
+    compressor.ratio.value = 8;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.18;
     master.connect(compressor);
     compressor.connect(context.destination);
     const base = context.currentTime + 0.08;
@@ -189,7 +199,7 @@ export default function Home() {
       const gain = context.createGain();
       const start = base + note.startTimeSeconds;
       const duration = Math.max(0.04, note.durationSeconds);
-      const level = Math.min(0.18, Math.max(0.025, note.amplitude * 0.13));
+      const level = previewNoteGain(note.amplitude);
       oscillator.type = "triangle";
       oscillator.frequency.value = 440 * 2 ** ((note.pitchMidi - 69) / 12);
       gain.gain.setValueAtTime(0.0001, start);

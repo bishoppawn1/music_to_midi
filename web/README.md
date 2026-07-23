@@ -35,6 +35,11 @@ the downloaded MIDI while preserving chords, note lengths, dynamics, and the
 phrase's overall duration. YouTube's embedded player itself does not expose
 reverse video playback.
 
+Preview playback uses a high-output gain curve with compression to keep both
+single notes and dense chords clearly audible. Downloaded MIDI notes also use a
+stronger velocity range while retaining the relative dynamics detected from the
+source performance.
+
 ## Deployment
 
 The visitor-facing application is built into the repository root for GitHub

@@ -12,8 +12,9 @@ End users do not install anything or create an account. They:
 3. Click **Capture this tab**.
 4. Select the current Link to MIDI tab and enable **Share tab audio**.
 5. Play the embedded video, then click **Stop and make MIDI**.
-6. Preview and download the result. The MIDI filename includes the download's
-   local date and time, such as `youtube-capture-2026-07-23_02-45-07.mid`.
+6. Preview, seek through, correct, and download the result. The MIDI filename
+   includes the download's local date and time, such as
+   `youtube-capture-2026-07-23_02-45-07.mid`.
 
 The player, captured audio, and transcription stay in one browser tab. If a
 video owner has disabled embedding, the interface provides a link to open that
@@ -29,6 +30,21 @@ mode applies a gradual confidence boost to the lowest and highest model octaves
 so quiet bass and treble notes are less likely to be dropped. A0–C8 is the
 Basic Pitch model's fixed output range.
 
+Every inference is decoded three ways: strict, selected, and sensitive.
+Detections found by multiple passes receive consensus support, while isolated
+weak activations need stronger onset or audio-attack evidence. **Transcription
+mode** can follow one dominant melody, retain polyphonic chords, or choose
+automatically. A conservative post-pass removes weak octave and harmonic
+shadows without discarding strong chord tones. Edge recovery is gentler for
+onsets than sustained frames so it recovers range extremes without creating as
+many false attacks.
+
+Before inference, stereo channels are checked for phase cancellation, converted
+to the cleanest mono representation, normalized, and resampled locally. The
+output retains Basic Pitch contour data: melody MIDI uses per-note pitch bends,
+while chord MIDI uses the estimated global tuning offset because MIDI pitch
+bends affect an entire channel.
+
 **Note direction** can leave timing in its original order or mirror the detected
 phrase from last note to first. Reverse mode affects the in-browser preview and
 the downloaded MIDI while preserving chords, note lengths, dynamics, and the
@@ -39,6 +55,11 @@ Preview playback uses a high-output gain curve with compression to keep both
 single notes and dense chords clearly audible. Downloaded MIDI notes also use a
 stronger velocity range while retaining the relative dynamics detected from the
 source performance.
+
+The result includes a seekable preview timeline and a lightweight piano-roll
+correction view. A visitor can jump to any point, select and transpose a note,
+delete a false note, or add a missing note at the playhead. Each correction
+immediately regenerates the downloadable MIDI in the browser.
 
 ## Deployment
 

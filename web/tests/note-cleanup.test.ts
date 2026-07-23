@@ -37,6 +37,16 @@ test("joins a weak-onset near-contiguous fragment", () => {
   assert.equal(result.notes[0].durationSeconds, 0.503);
 });
 
+test("joins a weak fragment separated by a tiny decoder gap", () => {
+  const result = cleanRetriggers(
+    [note(), note({ startTimeSeconds: 0.261, onsetConfidence: 0.08 })],
+    silentAudio,
+  );
+
+  assert.equal(result.notes.length, 1);
+  assert.equal(result.merged, 1);
+});
+
 test("keeps a weak-onset note when there is a perceptible gap", () => {
   const result = cleanRetriggers(
     [note(), note({ startTimeSeconds: 0.268, onsetConfidence: 0.08 })],

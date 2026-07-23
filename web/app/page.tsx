@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
+import { prepareAudioChannels } from "./audio-preprocessing";
 import {
   getDetectionSettings,
   PITCH_RANGE_OPTIONS,
@@ -10,7 +11,16 @@ import {
   type SensitivityId,
 } from "./detection-settings";
 import { makeDownloadFilename } from "./download-filename";
-import { cleanRetriggers, type CleanNote } from "./note-cleanup";
+import {
+  addNoteAt,
+  deleteNote,
+  transposeNote,
+} from "./note-editing";
+import {
+  cleanRetriggers,
+  hasFreshAttack,
+  type CleanNote,
+} from "./note-cleanup";
 import {
   applyNoteDirection,
   NOTE_DIRECTION_OPTIONS,
@@ -21,6 +31,22 @@ import {
   PREVIEW_MASTER_GAIN,
   previewNoteGain,
 } from "./playback-levels";
+import {
+  clampPreviewTime,
+  playableNotesFrom,
+  previewDuration,
+} from "./preview-timeline";
+import {
+  adaptiveDecodeSettings,
+  applyTranscriptionMode,
+  fuseAdaptivePasses,
+  globalTuningBend,
+  keepConfidentCandidates,
+  pitchBendToMidiValue,
+  TRANSCRIPTION_MODE_OPTIONS,
+  type ResolvedTranscriptionMode,
+  type TranscriptionMode,
+} from "./transcription-accuracy";
 
 type Phase =
   | "idle"
@@ -41,6 +67,7 @@ type Result = {
   midiUrl: string;
   downloadTitle: string;
   directionLabel: string;
+  resolvedMode: ResolvedTranscriptionMode;
 };
 
 type CaptureSession = {
@@ -68,8 +95,9 @@ function phaseIndex(phase: Phase) {
 }
 
 function formatDuration(seconds: number) {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.round(seconds % 60);
+  const wholeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(wholeSeconds / 60);
+  const remainder = wholeSeconds % 60;
   return `${minutes}:${remainder.toString().padStart(2, "0")}`;
 }
 
@@ -112,24 +140,22 @@ function recorderOptions(): MediaRecorderOptions | undefined {
   return mimeType ? { mimeType } : undefined;
 }
 
-async function resampleToMono(buffer: AudioBuffer) {
-  const length = Math.ceil(buffer.duration * SAMPLE_RATE);
-  const offline = new OfflineAudioContext(1, length, SAMPLE_RATE);
-  const source = offline.createBufferSource();
-  source.buffer = buffer;
-  source.connect(offline.destination);
-  source.start();
-  const rendered = await offline.startRendering();
-  return new Float32Array(rendered.getChannelData(0));
+function bendFrequency(pitchMidi: number, bend = 0) {
+  return 440 * 2 ** ((pitchMidi + bend / 3 - 69) / 12);
 }
 
-async function makeMidi(notes: CleanNote[]) {
+async function makeMidi(
+  notes: CleanNote[],
+  resolvedMode: ResolvedTranscriptionMode,
+) {
   const { Midi } = await import("@tonejs/midi");
   const midi = new Midi();
   midi.header.setTempo(120);
   const track = midi.addTrack();
   track.name = "Link to MIDI transcription";
   track.instrument.number = 0;
+  const tuningBend = globalTuningBend(notes);
+  if (tuningBend) track.addPitchBend({ time: 0, value: tuningBend });
   for (const note of notes) {
     track.addNote({
       midi: note.pitchMidi,
@@ -137,6 +163,21 @@ async function makeMidi(notes: CleanNote[]) {
       duration: Math.max(0.03, note.durationSeconds),
       velocity: midiVelocity(note.amplitude),
     });
+    if (resolvedMode === "melody" && note.pitchBends?.length) {
+      const step = Math.max(1, Math.ceil(note.pitchBends.length / 24));
+      for (let index = 0; index < note.pitchBends.length; index += step) {
+        track.addPitchBend({
+          time:
+            note.startTimeSeconds +
+            note.durationSeconds * (index / note.pitchBends.length),
+          value: pitchBendToMidiValue(note.pitchBends[index]),
+        });
+      }
+      track.addPitchBend({
+        time: note.startTimeSeconds + note.durationSeconds,
+        value: tuningBend,
+      });
+    }
   }
   return midi.toArray();
 }
@@ -151,17 +192,26 @@ export default function Home() {
   const [sourceVideoId, setSourceVideoId] = useState("");
   const [sensitivity, setSensitivity] = useState<SensitivityId>("balanced");
   const [pitchRange, setPitchRange] = useState<PitchRangeId>("full");
+  const [transcriptionMode, setTranscriptionMode] =
+    useState<TranscriptionMode>("auto");
   const [noteDirection, setNoteDirection] = useState<NoteDirection>("forward");
   const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [previewTime, setPreviewTime] = useState(0);
+  const [selectedNoteIndex, setSelectedNoteIndex] = useState<number | null>(null);
   const captureRef = useRef<CaptureSession | null>(null);
   const previewContext = useRef<AudioContext | null>(null);
   const previewNodes = useRef<AudioScheduledSourceNode[]>([]);
+  const previewInterval = useRef<number | null>(null);
 
   const busy = ["sharing", "recording", "decoding", "listening", "cleaning"].includes(phase);
 
-  function stopPreview() {
+  function stopPreview(resetPosition = false) {
+    if (previewInterval.current !== null) {
+      window.clearInterval(previewInterval.current);
+      previewInterval.current = null;
+    }
     for (const node of previewNodes.current) {
       try {
         node.stop();
@@ -173,13 +223,17 @@ export default function Home() {
     if (previewContext.current) void previewContext.current.close();
     previewContext.current = null;
     setIsPlaying(false);
+    if (resetPosition) setPreviewTime(0);
   }
 
-  function playPreview() {
-    if (!result || isPlaying) {
-      stopPreview();
-      return;
-    }
+  function startPreview(requestedOffset: number) {
+    if (!result) return;
+    stopPreview();
+    const durationTotal = previewDuration(result.notes, result.duration);
+    const offset =
+      requestedOffset >= durationTotal - 0.02
+        ? 0
+        : clampPreviewTime(requestedOffset, durationTotal);
     const context = new AudioContext();
     const master = context.createGain();
     const compressor = context.createDynamicsCompressor();
@@ -191,17 +245,47 @@ export default function Home() {
     compressor.release.value = 0.18;
     master.connect(compressor);
     compressor.connect(context.destination);
-    const base = context.currentTime + 0.08;
-    let finalTime = base;
+    const base = context.currentTime + 0.06;
 
-    for (const note of result.notes) {
+    for (const note of playableNotesFrom(result.notes, offset)) {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-      const start = base + note.startTimeSeconds;
-      const duration = Math.max(0.04, note.durationSeconds);
+      const noteEnd = note.startTimeSeconds + note.durationSeconds;
+      const audibleStart = Math.max(offset, note.startTimeSeconds);
+      const start = base + audibleStart - offset;
+      const duration = Math.max(0.04, noteEnd - audibleStart);
       const level = previewNoteGain(note.amplitude);
+      const bends = note.pitchBends ?? [];
+      const bendStartIndex = bends.length
+        ? Math.min(
+            bends.length - 1,
+            Math.floor(
+              ((audibleStart - note.startTimeSeconds) / note.durationSeconds) *
+                bends.length,
+            ),
+          )
+        : 0;
       oscillator.type = "triangle";
-      oscillator.frequency.value = 440 * 2 ** ((note.pitchMidi - 69) / 12);
+      oscillator.frequency.setValueAtTime(
+        bendFrequency(note.pitchMidi, bends[bendStartIndex] ?? 0),
+        start,
+      );
+      if (bends.length) {
+        const bendStep = Math.max(1, Math.ceil(bends.length / 24));
+        for (let index = bendStartIndex; index < bends.length; index += bendStep) {
+          const bendTime =
+            base +
+            note.startTimeSeconds +
+            note.durationSeconds * (index / bends.length) -
+            offset;
+          if (bendTime >= start) {
+            oscillator.frequency.setValueAtTime(
+              bendFrequency(note.pitchMidi, bends[index]),
+              bendTime,
+            );
+          }
+        }
+      }
       gain.gain.setValueAtTime(0.0001, start);
       gain.gain.exponentialRampToValueAtTime(level, start + 0.012);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
@@ -210,12 +294,42 @@ export default function Home() {
       oscillator.start(start);
       oscillator.stop(start + duration + 0.02);
       previewNodes.current.push(oscillator);
-      finalTime = Math.max(finalTime, start + duration);
     }
 
     previewContext.current = context;
+    setPreviewTime(offset);
     setIsPlaying(true);
-    window.setTimeout(() => stopPreview(), Math.max(0, finalTime - context.currentTime) * 1000 + 100);
+    previewInterval.current = window.setInterval(() => {
+      const position = Math.min(
+        durationTotal,
+        offset + Math.max(0, context.currentTime - base),
+      );
+      setPreviewTime(position);
+      if (position >= durationTotal) {
+        stopPreview();
+        setPreviewTime(durationTotal);
+      }
+    }, 50);
+  }
+
+  function togglePreview() {
+    if (isPlaying) {
+      stopPreview();
+    } else {
+      startPreview(previewTime);
+    }
+  }
+
+  function seekPreview(time: number) {
+    if (!result) return;
+    const wasPlaying = isPlaying;
+    stopPreview();
+    const nextTime = clampPreviewTime(
+      time,
+      previewDuration(result.notes, result.duration),
+    );
+    setPreviewTime(nextTime);
+    if (wasPlaying) startPreview(nextTime);
   }
 
   function reset() {
@@ -230,6 +344,8 @@ export default function Home() {
     }
     if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
     setResult(null);
+    setSelectedNoteIndex(null);
+    setPreviewTime(0);
     setProgress(0);
     setMessage("");
     setSourceTitle("");
@@ -244,6 +360,8 @@ export default function Home() {
     stopPreview();
     if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
     setResult(null);
+    setSelectedNoteIndex(null);
+    setPreviewTime(0);
     setMessage("");
     setProgress(0);
 
@@ -270,7 +388,14 @@ export default function Home() {
       if (decoded.duration < 0.5) {
         throw new Error("The capture was too short. Record at least a few seconds of music.");
       }
-      const samples = await resampleToMono(decoded);
+      const samples = prepareAudioChannels(
+        Array.from(
+          { length: decoded.numberOfChannels },
+          (_, index) => new Float32Array(decoded.getChannelData(index)),
+        ),
+        decoded.sampleRate,
+        SAMPLE_RATE,
+      );
       await audioContext.close();
       audioContext = null;
 
@@ -292,37 +417,46 @@ export default function Home() {
 
       setPhase("cleaning");
       const detection = getDetectionSettings(sensitivity, pitchRange);
-      const recoveredFrames = recoverPitchEdges(frames, pitchRange);
-      const recoveredOnsets = recoverPitchEdges(onsets, pitchRange);
-      const frameNotes = basicPitchModule.outputToNotesPoly(
-        recoveredFrames,
-        recoveredOnsets,
-        detection.onsetThreshold,
-        detection.frameThreshold,
-        detection.minNoteFrames,
-        true,
-        detection.maxFrequency,
-        detection.minFrequency,
+      const recoveredFrames = recoverPitchEdges(frames, pitchRange, 1.2);
+      const recoveredOnsets = recoverPitchEdges(onsets, pitchRange, 1.08);
+      const passes = adaptiveDecodeSettings(detection).map((pass) => {
+        const frameNotes = basicPitchModule.outputToNotesPoly(
+          recoveredFrames,
+          recoveredOnsets,
+          pass.onsetThreshold,
+          pass.frameThreshold,
+          pass.minNoteFrames,
+          pass.inferOnsets,
+          detection.maxFrequency,
+          detection.minFrequency,
+        );
+        const timedNotes = basicPitchModule.noteFramesToTime(
+          basicPitchModule.addPitchBendsToNoteEvents(contours, frameNotes),
+        );
+        return timedNotes.map((note, index) => ({
+          startTimeSeconds: note.startTimeSeconds,
+          durationSeconds: note.durationSeconds,
+          pitchMidi: note.pitchMidi,
+          amplitude: note.amplitude,
+          pitchBends: note.pitchBends,
+          onsetConfidence:
+            recoveredOnsets[frameNotes[index].startFrame]?.[
+              frameNotes[index].pitchMidi - 21
+            ] ?? 0,
+        }));
+      });
+      const fused = fuseAdaptivePasses(passes);
+      const confident = keepConfidentCandidates(
+        fused,
+        (time) => hasFreshAttack(samples, time, SAMPLE_RATE),
       );
-      const timedNotes = basicPitchModule.noteFramesToTime(
-        basicPitchModule.addPitchBendsToNoteEvents(contours, frameNotes),
-      );
-      const rawNotes = timedNotes.map((note, index) => ({
-        startTimeSeconds: note.startTimeSeconds,
-        durationSeconds: note.durationSeconds,
-        pitchMidi: note.pitchMidi,
-        amplitude: note.amplitude,
-        onsetConfidence:
-          recoveredOnsets[frameNotes[index].startFrame]?.[
-            frameNotes[index].pitchMidi - 21
-          ] ?? 0,
-      }));
-      const cleaned = cleanRetriggers(rawNotes, samples);
+      const modeApplied = applyTranscriptionMode(confident, transcriptionMode);
+      const cleaned = cleanRetriggers(modeApplied.notes, samples);
       if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");
 
       const directedNotes = applyNoteDirection(cleaned.notes, noteDirection);
       const isReversed = noteDirection === "reverse";
-      const midiBytes = await makeMidi(directedNotes);
+      const midiBytes = await makeMidi(directedNotes, modeApplied.resolvedMode);
       const midiData = Uint8Array.from(midiBytes);
       const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
       setResult({
@@ -333,7 +467,10 @@ export default function Home() {
         midiUrl: URL.createObjectURL(midiBlob),
         downloadTitle: isReversed ? `${title}-reverse` : title,
         directionLabel: isReversed ? "reverse order" : "forward order",
+        resolvedMode: modeApplied.resolvedMode,
       });
+      setPreviewTime(0);
+      setSelectedNoteIndex(null);
       setProgress(100);
       setPhase("ready");
     } catch (error) {
@@ -361,6 +498,39 @@ export default function Home() {
       return;
     }
     await transcribeCapture(blob, session.title);
+  }
+
+  async function replaceResultNotes(notes: CleanNote[]) {
+    if (!result) return;
+    stopPreview();
+    const midiBytes = await makeMidi(notes, result.resolvedMode);
+    const midiData = Uint8Array.from(midiBytes);
+    const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
+    const midiUrl = URL.createObjectURL(midiBlob);
+    URL.revokeObjectURL(result.midiUrl);
+    setResult({ ...result, notes, midiUrl });
+    setPreviewTime((time) =>
+      clampPreviewTime(time, previewDuration(notes, result.duration)),
+    );
+  }
+
+  function changeSelectedPitch(semitones: number) {
+    if (!result || selectedNoteIndex === null) return;
+    void replaceResultNotes(
+      transposeNote(result.notes, selectedNoteIndex, semitones),
+    );
+  }
+
+  function removeSelectedNote() {
+    if (!result || selectedNoteIndex === null) return;
+    void replaceResultNotes(deleteNote(result.notes, selectedNoteIndex));
+    setSelectedNoteIndex(null);
+  }
+
+  function addNoteAtPreview() {
+    if (!result) return;
+    void replaceResultNotes(addNoteAt(result.notes, previewTime));
+    setSelectedNoteIndex(null);
   }
 
   function stopCapture() {
@@ -456,6 +626,20 @@ export default function Home() {
   }
 
   const currentStep = phaseIndex(phase);
+  const resultPreviewDuration = result
+    ? previewDuration(result.notes, result.duration)
+    : 0;
+  const editorPitches = result?.notes.map((note) => note.pitchMidi) ?? [];
+  const editorMinimumPitch = editorPitches.length
+    ? Math.max(21, Math.min(...editorPitches) - 2)
+    : 21;
+  const editorMaximumPitch = editorPitches.length
+    ? Math.min(108, Math.max(...editorPitches) + 2)
+    : 108;
+  const editorPitchSpan = Math.max(
+    1,
+    editorMaximumPitch - editorMinimumPitch + 1,
+  );
 
   return (
     <main>
@@ -537,12 +721,29 @@ export default function Home() {
                 ))}
               </select>
             </label>
+            <label>
+              <span>Transcription mode</span>
+              <select
+                value={transcriptionMode}
+                onChange={(event) =>
+                  setTranscriptionMode(event.target.value as TranscriptionMode)
+                }
+                disabled={busy}
+              >
+                {TRANSCRIPTION_MODE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="form-foot">
             <span>
               {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}{" "}
               {PITCH_RANGE_OPTIONS.find((option) => option.id === pitchRange)?.description}{" "}
-              {NOTE_DIRECTION_OPTIONS.find((option) => option.id === noteDirection)?.description}
+              {NOTE_DIRECTION_OPTIONS.find((option) => option.id === noteDirection)?.description}{" "}
+              {TRANSCRIPTION_MODE_OPTIONS.find((option) => option.id === transcriptionMode)?.description}
             </span>
             <span>Single-tab audio capture · up to 10 minutes</span>
           </div>
@@ -660,13 +861,11 @@ export default function Home() {
                 <h2 id="result-title">{result.title}</h2>
                 <p>
                   {result.notes.length} notes · {formatDuration(result.duration)} ·{" "}
-                  {result.directionLabel} · {result.merged} duplicate-looking retriggers joined
+                  {result.resolvedMode} mode · {result.directionLabel} ·{" "}
+                  {result.merged} duplicate-looking retriggers joined
                 </p>
               </div>
               <div className="result-actions">
-                <button type="button" className="preview-button" onClick={playPreview}>
-                  {isPlaying ? "Stop preview" : "Play preview"}
-                </button>
                 <a
                   className="download-button"
                   href={result.midiUrl}
@@ -679,6 +878,132 @@ export default function Home() {
                 </a>
               </div>
             </div>
+            <div className="preview-player">
+              <button
+                type="button"
+                className="preview-button"
+                onClick={togglePreview}
+                aria-label={isPlaying ? "Pause MIDI preview" : "Play MIDI preview"}
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+              <div className="preview-timeline">
+                <div className="preview-track" aria-hidden="true">
+                  <span
+                    style={{
+                      width: `${
+                        resultPreviewDuration
+                          ? (previewTime / resultPreviewDuration) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                  <i
+                    style={{
+                      left: `${
+                        resultPreviewDuration
+                          ? (previewTime / resultPreviewDuration) * 100
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max={resultPreviewDuration}
+                  step="0.01"
+                  value={previewTime}
+                  onChange={(event) => seekPreview(Number(event.target.value))}
+                  aria-label="Preview position"
+                />
+                <div className="preview-times">
+                  <span>{formatDuration(previewTime)}</span>
+                  <span>{formatDuration(resultPreviewDuration)}</span>
+                </div>
+              </div>
+            </div>
+            <section className="note-editor" aria-labelledby="note-editor-title">
+              <div className="note-editor-head">
+                <div>
+                  <span>MANUAL CORRECTION</span>
+                  <h3 id="note-editor-title">Fix individual notes</h3>
+                </div>
+                <div className="note-editor-actions">
+                  <button
+                    type="button"
+                    onClick={() => changeSelectedPitch(-1)}
+                    disabled={selectedNoteIndex === null}
+                  >
+                    Pitch −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changeSelectedPitch(1)}
+                    disabled={selectedNoteIndex === null}
+                  >
+                    Pitch +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removeSelectedNote}
+                    disabled={selectedNoteIndex === null}
+                  >
+                    Delete
+                  </button>
+                  <button type="button" onClick={addNoteAtPreview}>
+                    Add at playhead
+                  </button>
+                </div>
+              </div>
+              <div
+                className="piano-roll"
+                aria-label="Detected notes. Select a note to correct it."
+              >
+                {result.notes.map((note, index) => (
+                  <button
+                    type="button"
+                    className={selectedNoteIndex === index ? "selected" : ""}
+                    key={`${note.startTimeSeconds}-${note.pitchMidi}-${index}`}
+                    aria-label={`MIDI note ${note.pitchMidi} at ${formatDuration(note.startTimeSeconds)}`}
+                    onClick={() => setSelectedNoteIndex(index)}
+                    style={{
+                      left: `${
+                        resultPreviewDuration
+                          ? (note.startTimeSeconds / resultPreviewDuration) * 100
+                          : 0
+                      }%`,
+                      width: `${Math.max(
+                        0.6,
+                        resultPreviewDuration
+                          ? (note.durationSeconds / resultPreviewDuration) * 100
+                          : 1,
+                      )}%`,
+                      top: `${
+                        ((editorMaximumPitch - note.pitchMidi) /
+                          editorPitchSpan) *
+                        100
+                      }%`,
+                    }}
+                  />
+                ))}
+                <span
+                  className="piano-roll-playhead"
+                  aria-hidden="true"
+                  style={{
+                    left: `${
+                      resultPreviewDuration
+                        ? (previewTime / resultPreviewDuration) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <p>
+                Select a note to move it by a semitone or delete it. Move the
+                preview bar, then add a missing note at that position.
+              </p>
+            </section>
           </section>
         )}
       </section>

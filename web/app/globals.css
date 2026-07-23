@@ -141,7 +141,7 @@ h1 em {
 .input-row button:hover:not(:disabled), .download-button:hover { background: white; }
 .detection-controls {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-top: 14px;
 }
@@ -338,6 +338,144 @@ h1 em {
 .preview-button { background: transparent; color: white; cursor: pointer; font-weight: 800; }
 .preview-button:hover { background: white; color: var(--violet); }
 .download-button { border-color: var(--acid); gap: 15px; }
+.preview-player {
+  margin-top: 30px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid rgba(255,255,255,.42);
+  background: rgba(16,8,49,.23);
+}
+.preview-player .preview-button {
+  min-width: 88px;
+  border-color: var(--acid);
+  color: var(--acid);
+}
+.preview-timeline { min-width: 0; }
+.preview-track {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  background: rgba(255,255,255,.32);
+}
+.preview-track span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--acid);
+}
+.preview-track i {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--acid);
+  box-shadow: 0 0 0 2px var(--violet);
+  transform: translate(-50%, -50%);
+}
+.preview-player:focus-within .preview-track {
+  outline: 2px solid white;
+  outline-offset: 4px;
+}
+.preview-timeline input[type="range"] {
+  width: 100%;
+  height: 20px;
+  margin: -12px 0 0;
+  display: block;
+  position: relative;
+  cursor: pointer;
+  opacity: 0;
+}
+.preview-times {
+  margin-top: 2px;
+  display: flex;
+  justify-content: space-between;
+  color: rgba(255,255,255,.7);
+  font: 700 11px/1 monospace;
+}
+.note-editor {
+  margin-top: 20px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(255,255,255,.32);
+}
+.note-editor-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+.note-editor-head span {
+  color: var(--acid);
+  font: 800 10px/1 monospace;
+  letter-spacing: .12em;
+}
+.note-editor h3 {
+  margin: 7px 0 0;
+  font-size: 24px;
+  letter-spacing: -.035em;
+}
+.note-editor-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.note-editor-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.7);
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  font-weight: 800;
+}
+.note-editor-actions button:hover:not(:disabled) {
+  background: white;
+  color: var(--violet);
+}
+.note-editor-actions button:disabled { cursor: not-allowed; opacity: .35; }
+.piano-roll {
+  position: relative;
+  height: 230px;
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.45);
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,.08) 0,
+      rgba(255,255,255,.08) 1px,
+      transparent 1px,
+      transparent 16px
+    ),
+    rgba(16,8,49,.34);
+}
+.piano-roll button {
+  position: absolute;
+  min-width: 4px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  background: white;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.piano-roll button:hover,
+.piano-roll button.selected {
+  z-index: 2;
+  height: 12px;
+  background: var(--acid);
+  outline: 2px solid var(--ink);
+}
+.piano-roll-playhead {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: #ff5e57;
+  pointer-events: none;
+}
+.note-editor > p {
+  margin: 11px 0 0;
+  color: rgba(255,255,255,.65);
+  font-size: 12px;
+}
 
 .how-it-works {
   padding: 100px max(20px, calc((100% - 1180px) / 2));
@@ -371,7 +509,7 @@ footer p { margin: 0; color: rgba(255,255,255,.55); font-size: 12px; }
   .input-row { grid-template-columns: 1fr; }
   .detection-controls { grid-template-columns: 1fr; }
   .input-row button { min-height: 58px; justify-content: space-between; }
-  .form-foot, .video-caption, .capture-guide, .recording-card, .result-heading, footer {
+  .form-foot, .video-caption, .capture-guide, .recording-card, .result-heading, .note-editor-head, footer {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -382,6 +520,9 @@ footer p { margin: 0; color: rgba(255,255,255,.55); font-size: 12px; }
   .method-grid article { min-height: 190px; padding: 24px 0; border-right: 0; border-bottom: 1px solid; }
   .result-actions { width: 100%; }
   .result-actions > * { flex: 1; }
+  .preview-player { grid-template-columns: 1fr; }
+  .note-editor-actions { width: 100%; }
+  .note-editor-actions button { flex: 1; }
 }
 
 @media (max-width: 520px) {

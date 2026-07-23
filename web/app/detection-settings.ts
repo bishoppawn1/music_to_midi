@@ -91,12 +91,16 @@ function pitchRecoveryGain(pitchMidi: number, pitchRangeId: PitchRangeId) {
 export function recoverPitchEdges(
   activations: number[][],
   pitchRangeId: PitchRangeId,
+  maximumGain = MAX_EDGE_GAIN,
 ) {
   return activations.map((frame) =>
     frame.map((activation, pitchIndex) =>
       Math.min(
         1,
-        activation * pitchRecoveryGain(pitchIndex + MODEL_MIN_MIDI, pitchRangeId),
+        activation *
+          (1 +
+            (pitchRecoveryGain(pitchIndex + MODEL_MIN_MIDI, pitchRangeId) - 1) *
+              ((maximumGain - 1) / (MAX_EDGE_GAIN - 1))),
       ),
     ),
   );

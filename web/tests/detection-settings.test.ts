@@ -72,3 +72,12 @@ test("edge recovery never produces activation above one", () => {
   assert.equal(recovered[0], 1);
   assert.equal(recovered[87], 1);
 });
+
+test("onset recovery can use a gentler gain than sustained frames", () => {
+  const frame = Array.from({ length: 88 }, () => 0.5);
+  const [recovered] = recoverPitchEdges([frame], "full", 1.08);
+
+  assert.equal(recovered[0], 0.54);
+  assert.equal(recovered[43], 0.5);
+  assert.equal(recovered[87], 0.54);
+});

@@ -4,6 +4,7 @@ export type CleanNote = {
   pitchMidi: number;
   amplitude: number;
   onsetConfidence: number;
+  pitchBends?: number[];
 };
 
 const DEFAULT_SAMPLE_RATE = 22_050;
@@ -19,7 +20,7 @@ function rms(samples: Float32Array, start: number, end: number) {
   return Math.sqrt(sum / (to - from));
 }
 
-function hasFreshAttack(
+export function hasFreshAttack(
   samples: Float32Array,
   time: number,
   sampleRate = DEFAULT_SAMPLE_RATE,
@@ -53,7 +54,7 @@ export function cleanRetriggers(
     if (previous) {
       const previousEnd = previous.startTimeSeconds + previous.durationSeconds;
       const gap = note.startTimeSeconds - previousEnd;
-      const isNearContinuousFragment = gap >= -0.006 && gap <= 0.006;
+      const isNearContinuousFragment = gap >= -0.012 && gap <= 0.014;
       const hasModelOnset = note.onsetConfidence >= 0.25;
 
       if (
@@ -65,6 +66,12 @@ export function cleanRetriggers(
           Math.max(previousEnd, note.startTimeSeconds + note.durationSeconds) -
           previous.startTimeSeconds;
         previous.amplitude = Math.max(previous.amplitude, note.amplitude);
+        if (note.pitchBends?.length) {
+          previous.pitchBends = [
+            ...(previous.pitchBends ?? []),
+            ...note.pitchBends,
+          ];
+        }
         merged += 1;
         continue;
       }

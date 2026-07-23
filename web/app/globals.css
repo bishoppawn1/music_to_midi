@@ -164,6 +164,42 @@ h1 em {
 }
 .detection-controls select:focus { outline: 2px solid var(--acid); outline-offset: 1px; }
 .detection-controls select:disabled { cursor: wait; opacity: .64; }
+.mode-guide {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.24);
+  background: rgba(255,255,255,.06);
+}
+.converter .mode-guide h2 {
+  margin: 0 0 12px;
+  color: var(--acid);
+  font: 800 12px/1.2 Arial, Helvetica, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.mode-guide > div {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.mode-guide article {
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+}
+.mode-guide article.selected {
+  border-color: var(--acid);
+  background: rgba(217,255,67,.1);
+}
+.mode-guide h3 {
+  margin: 0 0 7px;
+  font-size: 14px;
+}
+.mode-guide p {
+  margin: 0;
+  color: rgba(255,255,255,.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .form-foot {
   display: flex;
   justify-content: space-between;
@@ -508,6 +544,7 @@ footer p { margin: 0; color: rgba(255,255,255,.55); font-size: 12px; }
   .hero { padding-top: 78px; }
   .input-row { grid-template-columns: 1fr; }
   .detection-controls { grid-template-columns: 1fr; }
+  .mode-guide > div { grid-template-columns: 1fr; }
   .input-row button { min-height: 58px; justify-content: space-between; }
   .form-foot, .video-caption, .capture-guide, .recording-card, .result-heading, .note-editor-head, footer {
     align-items: flex-start;

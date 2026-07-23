@@ -17,3 +17,21 @@ export function playableNotesFrom(notes: CleanNote[], offset: number) {
     (note) => note.startTimeSeconds + note.durationSeconds > offset,
   );
 }
+
+export function notesForSchedulingWindow(
+  notes: CleanNote[],
+  windowStart: number,
+  windowEnd: number,
+  includeAlreadyPlaying = false,
+) {
+  return notes.filter((note) => {
+    const noteEnd = note.startTimeSeconds + note.durationSeconds;
+    const beginsInWindow =
+      note.startTimeSeconds >= windowStart && note.startTimeSeconds < windowEnd;
+    const alreadyPlaying =
+      includeAlreadyPlaying &&
+      note.startTimeSeconds < windowStart &&
+      noteEnd > windowStart;
+    return beginsInWindow || alreadyPlaying;
+  });
+}

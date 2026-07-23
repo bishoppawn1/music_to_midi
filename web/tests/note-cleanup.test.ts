@@ -47,9 +47,19 @@ test("joins a weak fragment separated by a tiny decoder gap", () => {
   assert.equal(result.merged, 1);
 });
 
-test("keeps a weak-onset note when there is a perceptible gap", () => {
+test("joins a split note across a small decoder gap with no new attack", () => {
   const result = cleanRetriggers(
     [note(), note({ startTimeSeconds: 0.268, onsetConfidence: 0.08 })],
+    silentAudio,
+  );
+
+  assert.equal(result.notes.length, 1);
+  assert.equal(result.merged, 1);
+});
+
+test("keeps a separate note after a clearly audible-sized gap", () => {
+  const result = cleanRetriggers(
+    [note(), note({ startTimeSeconds: 0.32, onsetConfidence: 0.08 })],
     silentAudio,
   );
 
@@ -57,8 +67,11 @@ test("keeps a weak-onset note when there is a perceptible gap", () => {
   assert.equal(result.merged, 0);
 });
 
-test("keeps a quieter repeated onset instead of cleaning it away", () => {
+test("keeps a quieter repeated note when the waveform has a fresh attack", () => {
   const samples = new Float32Array(22_050);
+  for (let index = Math.floor(0.25 * 22_050); index < 0.295 * 22_050; index += 1) {
+    samples[index] = index % 2 ? 0.2 : -0.2;
+  }
   const result = cleanRetriggers([
     note({ durationSeconds: 0.25 }),
     note({

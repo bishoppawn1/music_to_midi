@@ -3,6 +3,7 @@ import test from "node:test";
 import type { CleanNote } from "../app/note-cleanup.ts";
 import {
   clampPreviewTime,
+  notesForSchedulingWindow,
   playableNotesFrom,
   previewDuration,
 } from "../app/preview-timeline.ts";
@@ -39,6 +40,23 @@ test("seeking retains a note that is already sounding", () => {
   );
   assert.deepEqual(
     playableNotesFrom(notes, 2).map((note) => note.pitchMidi),
+    [64],
+  );
+});
+
+test("schedules only a short preview window without duplicating old notes", () => {
+  assert.deepEqual(
+    notesForSchedulingWindow(notes, 0, 2).map((note) => note.pitchMidi),
+    [60],
+  );
+  assert.deepEqual(
+    notesForSchedulingWindow(notes, 1.25, 3.5, true).map(
+      (note) => note.pitchMidi,
+    ),
+    [60, 64],
+  );
+  assert.deepEqual(
+    notesForSchedulingWindow(notes, 1.5, 3.5).map((note) => note.pitchMidi),
     [64],
   );
 });

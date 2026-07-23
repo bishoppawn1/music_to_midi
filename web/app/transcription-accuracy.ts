@@ -3,18 +3,24 @@ import type { CleanNote } from "./note-cleanup";
 export const TRANSCRIPTION_MODE_OPTIONS = [
   {
     id: "auto",
-    label: "Automatic",
-    description: "Chooses melody or chord handling from the detected performance.",
+    name: "Automatic",
+    label: "Automatic · app chooses",
+    description:
+      "The app listens first. It picks Melody for one main tune or Chords for notes played together.",
   },
   {
     id: "melody",
-    label: "Melody · one lead",
-    description: "Follows one dominant musical line and rejects overlapping harmonics.",
+    name: "Melody",
+    label: "Melody · one main tune",
+    description:
+      "Use this for singing, whistling, a flute, or a solo that mostly plays one note at a time.",
   },
   {
     id: "chords",
-    label: "Chords · polyphonic",
-    description: "Keeps simultaneous notes while suppressing weak harmonic shadows.",
+    name: "Chords",
+    label: "Chords · notes together",
+    description:
+      "Use this for piano chords, strummed guitar, or music with several notes sounding at once.",
   },
 ] as const;
 
@@ -195,6 +201,16 @@ export function applyTranscriptionMode(
 export function pitchBendToMidiValue(bend: number) {
   const value = Math.round(bend * (8192 / 6));
   return Math.min(8191, Math.max(-8192, value));
+}
+
+export function smoothPitchBends(bends: number[], radius = 2) {
+  if (bends.length < 3) return [...bends];
+  return bends.map((_, index) => {
+    const window = bends
+      .slice(Math.max(0, index - radius), index + radius + 1)
+      .sort((left, right) => left - right);
+    return window[Math.floor(window.length / 2)];
+  });
 }
 
 export function globalTuningBend(notes: CleanNote[]) {

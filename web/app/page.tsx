@@ -33,7 +33,7 @@ import {
 } from "./playback-levels";
 import {
   clampPreviewTime,
-  playableNotesFrom,
+  notesForSchedulingWindow,
   previewDuration,
 } from "./preview-timeline";
 import {
@@ -43,6 +43,7 @@ import {
   globalTuningBend,
   keepConfidentCandidates,
   pitchBendToMidiValue,
+  smoothPitchBends,
   TRANSCRIPTION_MODE_OPTIONS,
   type ResolvedTranscriptionMode,
   type TranscriptionMode,
@@ -164,13 +165,14 @@ async function makeMidi(
       velocity: midiVelocity(note.amplitude),
     });
     if (resolvedMode === "melody" && note.pitchBends?.length) {
-      const step = Math.max(1, Math.ceil(note.pitchBends.length / 24));
-      for (let index = 0; index < note.pitchBends.length; index += step) {
+      const smoothedBends = smoothPitchBends(note.pitchBends);
+      const step = Math.max(1, Math.ceil(smoothedBends.length / 48));
+      for (let index = 0; index < smoothedBends.length; index += step) {
         track.addPitchBend({
           time:
             note.startTimeSeconds +
-            note.durationSeconds * (index / note.pitchBends.length),
-          value: pitchBendToMidiValue(note.pitchBends[index]),
+            note.durationSeconds * (index / smoothedBends.length),
+          value: pitchBendToMidiValue(smoothedBends[index]),
         });
       }
       track.addPitchBend({
@@ -202,7 +204,7 @@ export default function Home() {
   const [selectedNoteIndex, setSelectedNoteIndex] = useState<number | null>(null);
   const captureRef = useRef<CaptureSession | null>(null);
   const previewContext = useRef<AudioContext | null>(null);
-  const previewNodes = useRef<AudioScheduledSourceNode[]>([]);
+  const previewNodes = useRef(new Set<AudioScheduledSourceNode>());
   const previewInterval = useRef<number | null>(null);
 
   const busy = ["sharing", "recording", "decoding", "listening", "cleaning"].includes(phase);
@@ -219,7 +221,7 @@ export default function Home() {
         // A node that already ended needs no further cleanup.
       }
     }
-    previewNodes.current = [];
+    previewNodes.current.clear();
     if (previewContext.current) void previewContext.current.close();
     previewContext.current = null;
     setIsPlaying(false);
@@ -229,7 +231,8 @@ export default function Home() {
   function startPreview(requestedOffset: number) {
     if (!result) return;
     stopPreview();
-    const durationTotal = previewDuration(result.notes, result.duration);
+    const previewNotes = result.notes;
+    const durationTotal = previewDuration(previewNotes, result.duration);
     const offset =
       requestedOffset >= durationTotal - 0.02
         ? 0
@@ -247,7 +250,7 @@ export default function Home() {
     compressor.connect(context.destination);
     const base = context.currentTime + 0.06;
 
-    for (const note of playableNotesFrom(result.notes, offset)) {
+    function scheduleNote(note: CleanNote) {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
       const noteEnd = note.startTimeSeconds + note.durationSeconds;
@@ -255,7 +258,7 @@ export default function Home() {
       const start = base + audibleStart - offset;
       const duration = Math.max(0.04, noteEnd - audibleStart);
       const level = previewNoteGain(note.amplitude);
-      const bends = note.pitchBends ?? [];
+      const bends = smoothPitchBends(note.pitchBends ?? []);
       const bendStartIndex = bends.length
         ? Math.min(
             bends.length - 1,
@@ -271,15 +274,19 @@ export default function Home() {
         start,
       );
       if (bends.length) {
-        const bendStep = Math.max(1, Math.ceil(bends.length / 24));
-        for (let index = bendStartIndex; index < bends.length; index += bendStep) {
+        const bendStep = Math.max(1, Math.ceil(bends.length / 48));
+        for (
+          let index = bendStartIndex + bendStep;
+          index < bends.length;
+          index += bendStep
+        ) {
           const bendTime =
             base +
             note.startTimeSeconds +
             note.durationSeconds * (index / bends.length) -
             offset;
           if (bendTime >= start) {
-            oscillator.frequency.setValueAtTime(
+            oscillator.frequency.linearRampToValueAtTime(
               bendFrequency(note.pitchMidi, bends[index]),
               bendTime,
             );
@@ -293,9 +300,31 @@ export default function Home() {
       gain.connect(master);
       oscillator.start(start);
       oscillator.stop(start + duration + 0.02);
-      previewNodes.current.push(oscillator);
+      previewNodes.current.add(oscillator);
+      oscillator.addEventListener(
+        "ended",
+        () => previewNodes.current.delete(oscillator),
+        { once: true },
+      );
     }
 
+    function scheduleWindow(
+      windowStart: number,
+      windowEnd: number,
+      includeAlreadyPlaying = false,
+    ) {
+      for (const note of notesForSchedulingWindow(
+        previewNotes,
+        windowStart,
+        windowEnd,
+        includeAlreadyPlaying,
+      )) {
+        scheduleNote(note);
+      }
+    }
+
+    let scheduledThrough = Math.min(durationTotal, offset + 12);
+    scheduleWindow(offset, scheduledThrough, true);
     previewContext.current = context;
     setPreviewTime(offset);
     setIsPlaying(true);
@@ -305,6 +334,14 @@ export default function Home() {
         offset + Math.max(0, context.currentTime - base),
       );
       setPreviewTime(position);
+      if (
+        scheduledThrough < durationTotal &&
+        scheduledThrough < position + 8
+      ) {
+        const nextWindowEnd = Math.min(durationTotal, position + 12);
+        scheduleWindow(scheduledThrough, nextWindowEnd);
+        scheduledThrough = nextWindowEnd;
+      }
       if (position >= durationTotal) {
         stopPreview();
         setPreviewTime(durationTotal);
@@ -738,6 +775,23 @@ export default function Home() {
               </select>
             </label>
           </div>
+          <section
+            className="mode-guide"
+            aria-labelledby="mode-guide-title"
+          >
+            <h2 id="mode-guide-title">What do these music modes mean?</h2>
+            <div>
+              {TRANSCRIPTION_MODE_OPTIONS.map((option) => (
+                <article
+                  key={option.id}
+                  className={transcriptionMode === option.id ? "selected" : ""}
+                >
+                  <h3>{option.name}</h3>
+                  <p>{option.description}</p>
+                </article>
+              ))}
+            </div>
+          </section>
           <div className="form-foot">
             <span>
               {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}{" "}

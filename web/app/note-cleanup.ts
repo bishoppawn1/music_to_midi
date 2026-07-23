@@ -54,13 +54,19 @@ export function cleanRetriggers(
     if (previous) {
       const previousEnd = previous.startTimeSeconds + previous.durationSeconds;
       const gap = note.startTimeSeconds - previousEnd;
-      const isNearContinuousFragment = gap >= -0.012 && gap <= 0.014;
-      const hasModelOnset = note.onsetConfidence >= 0.25;
+      const allowedOverlap = Math.min(0.12, previous.durationSeconds * 0.4);
+      const isNearContinuousFragment = gap >= -allowedOverlap && gap <= 0.055;
+      const hasTrustedModelOnset = note.onsetConfidence >= 0.45;
+      const hasAudioAttack = hasFreshAttack(
+        samples,
+        note.startTimeSeconds,
+        sampleRate,
+      );
 
       if (
         isNearContinuousFragment &&
-        !hasModelOnset &&
-        !hasFreshAttack(samples, note.startTimeSeconds, sampleRate)
+        !hasTrustedModelOnset &&
+        !hasAudioAttack
       ) {
         previous.durationSeconds =
           Math.max(previousEnd, note.startTimeSeconds + note.durationSeconds) -

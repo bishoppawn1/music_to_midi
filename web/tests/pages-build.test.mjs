@@ -49,6 +49,7 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /recoverPitchEdges\(onsets, pitchRange, 1\.08\)/);
   assert.match(page, /Note direction/);
   assert.match(page, /Transcription mode/);
+  assert.match(page, /What do these music modes mean\?/);
   assert.match(page, /applyNoteDirection\(cleaned\.notes, noteDirection\)/);
   assert.match(page, /fuseAdaptivePasses\(passes\)/);
   assert.match(page, /keepConfidentCandidates/);
@@ -57,6 +58,8 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /pitchBendToMidiValue/);
   assert.match(page, /aria-label="Preview position"/);
   assert.match(page, /Add at playhead/);
+  assert.match(page, /scheduleWindow\(offset, scheduledThrough, true\)/);
+  assert.match(page, /linearRampToValueAtTime/);
   assert.match(page, /onClick=\{\(event\) =>/);
   assert.match(page, /event\.currentTarget\.download = makeDownloadFilename/);
   assert.match(settings, /onsetThreshold:\s*0\.28/);
@@ -71,7 +74,9 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /previewNoteGain\(note\.amplitude\)/);
   assert.match(playback, /PREVIEW_MASTER_GAIN = 0\.9/);
   assert.match(playback, /return 0\.62 \+/);
-  assert.match(accuracy, /Melody · one lead/);
+  assert.match(accuracy, /Melody · one main tune/);
+  assert.match(accuracy, /Chords · notes together/);
+  assert.match(accuracy, /smoothPitchBends/);
   assert.match(accuracy, /suppressWeakHarmonics/);
   assert.match(accuracy, /adaptiveDecodeSettings/);
   assert.match(preprocessing, /chooseMonoSignal/);

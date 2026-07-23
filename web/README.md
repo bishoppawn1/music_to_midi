@@ -39,6 +39,13 @@ shadows without discarding strong chord tones. Edge recovery is gentler for
 onsets than sustained frames so it recovers range extremes without creating as
 many false attacks.
 
+The interface explains the three modes in plain language:
+
+- **Automatic** listens first and chooses for the visitor.
+- **Melody** is for one main tune, such as singing, whistling, flute, or a solo.
+- **Chords** is for several notes at once, such as piano chords or strummed
+  guitar.
+
 Before inference, stereo channels are checked for phase cancellation, converted
 to the cleanest mono representation, normalized, and resampled locally. The
 output retains Basic Pitch contour data: melody MIDI uses per-note pitch bends,
@@ -60,6 +67,12 @@ The result includes a seekable preview timeline and a lightweight piano-roll
 correction view. A visitor can jump to any point, select and transpose a note,
 delete a false note, or add a missing note at the playhead. Each correction
 immediately regenerates the downloadable MIDI in the browser.
+
+To reduce stutter, fragments of the same pitch are joined across short gaps only
+when the waveform has no fresh attack and the model does not strongly identify
+a new note. Pitch contours use a small median smoother, and the preview
+schedules twelve seconds at a time instead of creating every oscillator for the
+whole recording at once.
 
 ## Deployment
 

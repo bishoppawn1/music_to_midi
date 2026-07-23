@@ -9,6 +9,7 @@ import {
   keepConfidentCandidates,
   pitchBendToMidiValue,
   resolveTranscriptionMode,
+  smoothPitchBends,
   suppressWeakHarmonics,
 } from "../app/transcription-accuracy.ts";
 
@@ -108,4 +109,23 @@ test("converts model contour bins into standard MIDI pitch-wheel values", () => 
     ]),
     pitchBendToMidiValue(1),
   );
+});
+
+test("smooths one-frame pitch spikes that can sound jittery", () => {
+  assert.deepEqual(smoothPitchBends([0, 0, 6, 0, 0]), [0, 0, 0, 0, 0]);
+  assert.deepEqual(smoothPitchBends([1, 2]), [1, 2]);
+});
+
+test("explains every transcription mode in plain language", async () => {
+  const { TRANSCRIPTION_MODE_OPTIONS } = await import(
+    "../app/transcription-accuracy.ts"
+  );
+
+  assert.deepEqual(
+    TRANSCRIPTION_MODE_OPTIONS.map((option) => option.name),
+    ["Automatic", "Melody", "Chords"],
+  );
+  assert.match(TRANSCRIPTION_MODE_OPTIONS[0].description, /app listens first/i);
+  assert.match(TRANSCRIPTION_MODE_OPTIONS[1].description, /one note at a time/i);
+  assert.match(TRANSCRIPTION_MODE_OPTIONS[2].description, /several notes/i);
 });

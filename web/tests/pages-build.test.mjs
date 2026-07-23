@@ -15,6 +15,7 @@ test("GitHub Pages root is the converter application", async () => {
     preprocessing,
     timeline,
     editing,
+    cleanup,
     packageJson,
     assets,
   ] = await Promise.all([
@@ -28,6 +29,7 @@ test("GitHub Pages root is the converter application", async () => {
     readFile(new URL("../app/audio-preprocessing.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/preview-timeline.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/note-editing.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/note-cleanup.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("site-assets/", root)),
   ]);
@@ -84,6 +86,8 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(timeline, /playableNotesFrom/);
   assert.match(editing, /transposeNote/);
   assert.match(editing, /deleteNote/);
+  assert.match(cleanup, /mergeNoteSpans/);
+  assert.match(cleanup, /endTimeSeconds - startTimeSeconds/);
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);

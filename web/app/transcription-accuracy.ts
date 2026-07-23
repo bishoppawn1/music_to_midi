@@ -89,12 +89,18 @@ export function fuseAdaptivePasses(passes: CleanNote[][]) {
 
   return groups.map(({ notes, passIndexes }) => {
     const representative = [...notes].sort((left, right) => noteScore(right) - noteScore(left))[0];
-    const average = (values: number[]) =>
-      values.reduce((sum, value) => sum + value, 0) / values.length;
+    const startTimeSeconds = Math.min(
+      ...notes.map((note) => note.startTimeSeconds),
+    );
+    const endTimeSeconds = Math.max(
+      ...notes.map(
+        (note) => note.startTimeSeconds + note.durationSeconds,
+      ),
+    );
     return {
       ...representative,
-      startTimeSeconds: average(notes.map((note) => note.startTimeSeconds)),
-      durationSeconds: average(notes.map((note) => note.durationSeconds)),
+      startTimeSeconds,
+      durationSeconds: endTimeSeconds - startTimeSeconds,
       amplitude: Math.max(...notes.map((note) => note.amplitude)),
       onsetConfidence: Math.max(...notes.map((note) => note.onsetConfidence)),
       support: passIndexes.size,

@@ -47,6 +47,8 @@ test("fuses nearby detections and records cross-pass support", () => {
   assert.equal(fused.length, 1);
   assert.equal(fused[0].support, 3);
   assert.equal(fused[0].amplitude, 0.8);
+  assert.equal(fused[0].startTimeSeconds, 0);
+  assert.ok(Math.abs(fused[0].durationSeconds - 0.82) < 1e-9);
 });
 
 test("keeps consensus notes and rejects an unsupported weak activation", () => {

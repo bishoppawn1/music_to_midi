@@ -31,6 +31,26 @@ export function hasFreshAttack(
   return after > 0.012 && after > before * 1.22;
 }
 
+export function mergeNoteSpans(primary: CleanNote, fragment: CleanNote) {
+  const startTimeSeconds = Math.min(
+    primary.startTimeSeconds,
+    fragment.startTimeSeconds,
+  );
+  const endTimeSeconds = Math.max(
+    primary.startTimeSeconds + primary.durationSeconds,
+    fragment.startTimeSeconds + fragment.durationSeconds,
+  );
+  return {
+    ...primary,
+    startTimeSeconds,
+    durationSeconds: endTimeSeconds - startTimeSeconds,
+    amplitude: Math.max(primary.amplitude, fragment.amplitude),
+    pitchBends: fragment.pitchBends?.length
+      ? [...(primary.pitchBends ?? []), ...fragment.pitchBends]
+      : primary.pitchBends,
+  };
+}
+
 /**
  * Joins only near-contiguous fragments that the model did not mark as a real
  * onset. Deliberate repeated notes are kept even when they touch each other.
@@ -68,16 +88,7 @@ export function cleanRetriggers(
         !hasTrustedModelOnset &&
         !hasAudioAttack
       ) {
-        previous.durationSeconds =
-          Math.max(previousEnd, note.startTimeSeconds + note.durationSeconds) -
-          previous.startTimeSeconds;
-        previous.amplitude = Math.max(previous.amplitude, note.amplitude);
-        if (note.pitchBends?.length) {
-          previous.pitchBends = [
-            ...(previous.pitchBends ?? []),
-            ...note.pitchBends,
-          ];
-        }
+        Object.assign(previous, mergeNoteSpans(previous, note));
         merged += 1;
         continue;
       }

@@ -74,6 +74,10 @@ a new note. Pitch contours use a small median smoother, and the preview
 schedules twelve seconds at a time instead of creating every oscillator for the
 whole recording at once.
 
+Whenever two detected fragments are joined, the surviving note begins at the
+earliest fragment start and ends at the latest fragment end. The merge therefore
+keeps the full held-note length instead of shortening the sound.
+
 ## Deployment
 
 The visitor-facing application is built into the repository root for GitHub

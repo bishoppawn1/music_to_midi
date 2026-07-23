@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cleanRetriggers, type CleanNote } from "../app/note-cleanup.ts";
+import {
+  cleanRetriggers,
+  mergeNoteSpans,
+  type CleanNote,
+} from "../app/note-cleanup.ts";
 
 const silentAudio = new Float32Array(22_050 * 2);
 
@@ -35,6 +39,33 @@ test("joins a weak-onset near-contiguous fragment", () => {
   assert.equal(result.notes.length, 1);
   assert.equal(result.merged, 1);
   assert.equal(result.notes[0].durationSeconds, 0.503);
+});
+
+test("a merged note spans the complete length of both consecutive fragments", () => {
+  const result = cleanRetriggers(
+    [
+      note({ durationSeconds: 0.25 }),
+      note({
+        startTimeSeconds: 0.25,
+        durationSeconds: 0.4,
+        onsetConfidence: 0.08,
+      }),
+    ],
+    silentAudio,
+  );
+
+  assert.equal(result.notes.length, 1);
+  assert.ok(Math.abs(result.notes[0].durationSeconds - 0.65) < 1e-9);
+});
+
+test("span merging keeps the earliest start and latest end when notes overlap", () => {
+  const merged = mergeNoteSpans(
+    note({ startTimeSeconds: 0.1, durationSeconds: 0.4 }),
+    note({ startTimeSeconds: 0, durationSeconds: 0.3 }),
+  );
+
+  assert.equal(merged.startTimeSeconds, 0);
+  assert.equal(merged.durationSeconds, 0.5);
 });
 
 test("joins a weak fragment separated by a tiny decoder gap", () => {

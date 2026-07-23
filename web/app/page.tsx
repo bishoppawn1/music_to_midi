@@ -1,6 +1,13 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
+import {
+  getDetectionSettings,
+  PITCH_RANGE_OPTIONS,
+  type PitchRangeId,
+  SENSITIVITY_OPTIONS,
+  type SensitivityId,
+} from "./detection-settings";
 import { cleanRetriggers, type CleanNote } from "./note-cleanup";
 
 type Phase =
@@ -138,6 +145,8 @@ export default function Home() {
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceVideoId, setSourceVideoId] = useState("");
+  const [sensitivity, setSensitivity] = useState<SensitivityId>("balanced");
+  const [pitchRange, setPitchRange] = useState<PitchRangeId>("full");
   const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -272,12 +281,16 @@ export default function Home() {
       );
 
       setPhase("cleaning");
+      const detection = getDetectionSettings(sensitivity, pitchRange);
       const frameNotes = basicPitchModule.outputToNotesPoly(
         frames,
         onsets,
-        0.62,
-        0.25,
-        11,
+        detection.onsetThreshold,
+        detection.frameThreshold,
+        detection.minNoteFrames,
+        true,
+        detection.maxFrequency,
+        detection.minFrequency,
       );
       const timedNotes = basicPitchModule.noteFramesToTime(
         basicPitchModule.addPitchBendsToNoteEvents(contours, frameNotes),
@@ -464,8 +477,40 @@ export default function Home() {
               <span aria-hidden="true">↓</span>
             </button>
           </div>
+          <div className="detection-controls">
+            <label>
+              <span>Detection detail</span>
+              <select
+                value={sensitivity}
+                onChange={(event) => setSensitivity(event.target.value as SensitivityId)}
+                disabled={busy}
+              >
+                {SENSITIVITY_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Pitch focus</span>
+              <select
+                value={pitchRange}
+                onChange={(event) => setPitchRange(event.target.value as PitchRangeId)}
+                disabled={busy}
+              >
+                {PITCH_RANGE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="form-foot">
-            <span>The YouTube player appears here—no tab switching required.</span>
+            <span>
+              {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}
+            </span>
             <span>Single-tab audio capture · up to 10 minutes</span>
           </div>
         </form>

@@ -54,7 +54,7 @@ export function cleanRetriggers(
       const previousEnd = previous.startTimeSeconds + previous.durationSeconds;
       const gap = note.startTimeSeconds - previousEnd;
       const isNearContinuousFragment = gap >= -0.006 && gap <= 0.006;
-      const hasModelOnset = note.onsetConfidence >= 0.35;
+      const hasModelOnset = note.onsetConfidence >= 0.25;
 
       if (
         isNearContinuousFragment &&

@@ -46,3 +46,18 @@ test("keeps a weak-onset note when there is a perceptible gap", () => {
   assert.equal(result.notes.length, 2);
   assert.equal(result.merged, 0);
 });
+
+test("keeps a quieter repeated onset instead of cleaning it away", () => {
+  const samples = new Float32Array(22_050);
+  const result = cleanRetriggers([
+    note({ durationSeconds: 0.25 }),
+    note({
+      startTimeSeconds: 0.25,
+      durationSeconds: 0.2,
+      onsetConfidence: 0.28,
+    }),
+  ], samples);
+
+  assert.equal(result.notes.length, 2);
+  assert.equal(result.merged, 0);
+});

@@ -18,6 +18,13 @@ The player, captured audio, and transcription stay in one browser tab. If a
 video owner has disabled embedding, the interface provides a link to open that
 video directly on YouTube and use the two-tab fallback.
 
+**Detection detail** controls how readily quieter and shorter notes are kept.
+The default **Balanced** profile recovers substantially more short notes than
+the original settings without accepting every weak activation. Choose **More
+notes** for particularly quiet or fast performances. **Pitch focus** can limit
+detection to the low, middle, or high register when sounds outside the
+instrument's range are creating unwanted notes.
+
 ## Deployment
 
 The visitor-facing application is built into the repository root for GitHub

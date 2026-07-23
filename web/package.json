@@ -9,7 +9,7 @@
     "dev": "vite --config vite.pages.config.ts",
     "build": "npm run build:pages",
     "build:pages": "node scripts/clean-pages-assets.mjs && vite build --config vite.pages.config.ts",
-    "test": "npm run build:pages && node --test tests/pages-build.test.mjs && node --experimental-strip-types --test tests/note-cleanup.test.ts",
+    "test": "npm run build:pages && node --test tests/pages-build.test.mjs && node --experimental-strip-types --test tests/*.test.ts",
     "lint": "tsc --noEmit --incremental false && eslint app static-site tests scripts vite.pages.config.ts"
   },
   "dependencies": {

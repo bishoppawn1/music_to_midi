@@ -12,15 +12,19 @@ import {
 } from "./detection-settings";
 import { makeDownloadFilename } from "./download-filename";
 import {
-  applyInstrumentPolyphony,
-  INSTRUMENT_PROFILE_OPTIONS,
-  type InstrumentProfileId,
-} from "./instrument-polyphony";
+  annotateTrackNotes,
+  arrangeInstrumentTracks,
+  INSTRUMENT_SETUP_OPTIONS,
+  type InstrumentSetupId,
+} from "./instrument-arrangement";
+import { applyInstrumentPolyphony } from "./instrument-polyphony";
 import {
   addNoteAt,
+  cycleNoteInstrument,
   deleteNote,
   transposeNote,
 } from "./note-editing";
+import { makeMultiTrackMidi } from "./midi-output";
 import {
   cleanRetriggers,
   hasFreshAttack,
@@ -32,7 +36,6 @@ import {
   type NoteDirection,
 } from "./note-order";
 import {
-  midiVelocity,
   PREVIEW_MASTER_GAIN,
   previewNoteGain,
 } from "./playback-levels";
@@ -50,9 +53,7 @@ import {
   adaptiveDecodeSettings,
   applyTranscriptionMode,
   fuseAdaptivePasses,
-  globalTuningBend,
   keepConfidentCandidates,
-  pitchBendToMidiValue,
   smoothPitchBends,
   TRANSCRIPTION_MODE_OPTIONS,
   type ResolvedTranscriptionMode,
@@ -100,7 +101,7 @@ const PUBLIC_BASE = import.meta.env.BASE_URL || "/";
 const PROCESS_STEPS: Array<{ phase: Phase; label: string }> = [
   { phase: "decoding", label: "Prepare sound" },
   { phase: "listening", label: "Hear the notes" },
-  { phase: "cleaning", label: "Clean repeats" },
+  { phase: "cleaning", label: "Split instruments" },
   { phase: "ready", label: "Make MIDI" },
 ];
 
@@ -158,43 +159,19 @@ function bendFrequency(pitchMidi: number, bend = 0) {
   return 440 * 2 ** ((pitchMidi + bend / 3 - 69) / 12);
 }
 
-async function makeMidi(
-  notes: CleanNote[],
-  resolvedMode: ResolvedTranscriptionMode,
-) {
-  const { Midi } = await import("@tonejs/midi");
-  const midi = new Midi();
-  midi.header.setTempo(120);
-  const track = midi.addTrack();
-  track.name = "Link to MIDI transcription";
-  track.instrument.number = 0;
-  const tuningBend = globalTuningBend(notes);
-  if (tuningBend) track.addPitchBend({ time: 0, value: tuningBend });
-  for (const note of notes) {
-    track.addNote({
-      midi: note.pitchMidi,
-      time: Math.max(0, note.startTimeSeconds),
-      duration: Math.max(0.03, note.durationSeconds),
-      velocity: midiVelocity(note.amplitude),
-    });
-    if (resolvedMode === "melody" && note.pitchBends?.length) {
-      const smoothedBends = smoothPitchBends(note.pitchBends);
-      const step = Math.max(1, Math.ceil(smoothedBends.length / 48));
-      for (let index = 0; index < smoothedBends.length; index += step) {
-        track.addPitchBend({
-          time:
-            note.startTimeSeconds +
-            note.durationSeconds * (index / smoothedBends.length),
-          value: pitchBendToMidiValue(smoothedBends[index]),
-        });
-      }
-      track.addPitchBend({
-        time: note.startTimeSeconds + note.durationSeconds,
-        value: tuningBend,
-      });
-    }
+function previewWaveform(note: CleanNote): OscillatorType {
+  switch (note.instrumentId) {
+    case "bass":
+      return "sine";
+    case "trumpet":
+    case "lead":
+    case "ensemble":
+      return "sawtooth";
+    case "guitar":
+      return "square";
+    default:
+      return "triangle";
   }
-  return midi.toArray();
 }
 
 export default function Home() {
@@ -209,8 +186,8 @@ export default function Home() {
   const [pitchRange, setPitchRange] = useState<PitchRangeId>("full");
   const [transcriptionMode, setTranscriptionMode] =
     useState<TranscriptionMode>("auto");
-  const [instrumentProfile, setInstrumentProfile] =
-    useState<InstrumentProfileId>("auto");
+  const [instrumentSetup, setInstrumentSetup] =
+    useState<InstrumentSetupId>("auto");
   const [noteDirection, setNoteDirection] = useState<NoteDirection>("forward");
   const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
@@ -293,7 +270,7 @@ export default function Home() {
             ),
           )
         : 0;
-      oscillator.type = "triangle";
+      oscillator.type = previewWaveform(note);
       oscillator.frequency.setValueAtTime(
         bendFrequency(note.pitchMidi, bends[bendStartIndex] ?? 0),
         start,
@@ -538,31 +515,45 @@ export default function Home() {
         (time) => hasFreshAttack(samples, time, SAMPLE_RATE),
       );
       const modeApplied = applyTranscriptionMode(confident, transcriptionMode);
-      const limited = applyInstrumentPolyphony(
+      const arrangement = arrangeInstrumentTracks(
         modeApplied.notes,
-        instrumentProfile,
+        instrumentSetup,
         modeApplied.resolvedMode,
       );
-      const cleaned = cleanRetriggers(limited.notes, samples);
-      if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");
+      let excessNotesRemoved = 0;
+      let merged = 0;
+      const cleanedNotes = arrangement.tracks.flatMap((track) => {
+        const limited = applyInstrumentPolyphony(
+          track.notes,
+          track.profileId,
+          track.mode,
+        );
+        excessNotesRemoved += limited.removed + limited.trimmed;
+        const cleaned = cleanRetriggers(limited.notes, samples);
+        merged += cleaned.merged;
+        return annotateTrackNotes({ ...track, notes: cleaned.notes });
+      });
+      if (!cleanedNotes.length) throw new Error("No clear musical notes were detected.");
 
-      const directedNotes = applyNoteDirection(cleaned.notes, noteDirection);
+      const directedNotes = applyNoteDirection(cleanedNotes, noteDirection);
       const isReversed = noteDirection === "reverse";
-      const midiBytes = await makeMidi(directedNotes, modeApplied.resolvedMode);
+      const midiBytes = await makeMultiTrackMidi(directedNotes);
       const midiData = Uint8Array.from(midiBytes);
       const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
       setResult({
         title,
         duration: decoded.duration,
         notes: directedNotes,
-        merged: cleaned.merged,
+        merged,
         midiUrl: URL.createObjectURL(midiBlob),
         downloadTitle: isReversed ? `${title}-reverse` : title,
         directionLabel: isReversed ? "reverse order" : "forward order",
         resolvedMode: modeApplied.resolvedMode,
-        instrumentLabel: limited.profile.name,
-        instrumentInferred: limited.profile.inferred,
-        excessNotesRemoved: limited.removed + limited.trimmed,
+        instrumentLabel: arrangement.tracks
+          .map((track) => track.name)
+          .join(" + "),
+        instrumentInferred: arrangement.inferred,
+        excessNotesRemoved,
       });
       setPreviewTime(0);
       setSelectedNoteIndex(null);
@@ -598,12 +589,20 @@ export default function Home() {
   async function replaceResultNotes(notes: CleanNote[]) {
     if (!result) return;
     stopPreview();
-    const midiBytes = await makeMidi(notes, result.resolvedMode);
+    const midiBytes = await makeMultiTrackMidi(notes);
     const midiData = Uint8Array.from(midiBytes);
     const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
     const midiUrl = URL.createObjectURL(midiBlob);
     URL.revokeObjectURL(result.midiUrl);
-    setResult({ ...result, notes, midiUrl });
+    const instrumentLabel = Array.from(
+      new Set(notes.map((note) => note.instrumentName).filter(Boolean)),
+    ).join(" + ");
+    setResult({
+      ...result,
+      notes,
+      midiUrl,
+      instrumentLabel: instrumentLabel || result.instrumentLabel,
+    });
     setPreviewTime((time) =>
       clampPreviewTime(time, previewDuration(notes, result.duration)),
     );
@@ -620,6 +619,13 @@ export default function Home() {
     if (!result || selectedNoteIndex === null) return;
     void replaceResultNotes(deleteNote(result.notes, selectedNoteIndex));
     setSelectedNoteIndex(null);
+  }
+
+  function changeSelectedInstrument() {
+    if (!result || selectedNoteIndex === null) return;
+    void replaceResultNotes(
+      cycleNoteInstrument(result.notes, selectedNoteIndex),
+    );
   }
 
   function addNoteAtPreview() {
@@ -833,15 +839,15 @@ export default function Home() {
               </select>
             </label>
             <label>
-              <span>Instrument profile</span>
+              <span>Instrument setup</span>
               <select
-                value={instrumentProfile}
+                value={instrumentSetup}
                 onChange={(event) =>
-                  setInstrumentProfile(event.target.value as InstrumentProfileId)
+                  setInstrumentSetup(event.target.value as InstrumentSetupId)
                 }
                 disabled={busy}
               >
-                {INSTRUMENT_PROFILE_OPTIONS.map((option) => (
+                {INSTRUMENT_SETUP_OPTIONS.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
@@ -872,7 +878,7 @@ export default function Home() {
               {PITCH_RANGE_OPTIONS.find((option) => option.id === pitchRange)?.description}{" "}
               {NOTE_DIRECTION_OPTIONS.find((option) => option.id === noteDirection)?.description}{" "}
               {TRANSCRIPTION_MODE_OPTIONS.find((option) => option.id === transcriptionMode)?.description}{" "}
-              {INSTRUMENT_PROFILE_OPTIONS.find((option) => option.id === instrumentProfile)?.description}
+              {INSTRUMENT_SETUP_OPTIONS.find((option) => option.id === instrumentSetup)?.description}
             </span>
             <span>Single-tab audio capture · up to 10 minutes</span>
           </div>
@@ -1121,6 +1127,18 @@ export default function Home() {
                   >
                     Delete
                   </button>
+                  <button
+                    type="button"
+                    onClick={changeSelectedInstrument}
+                    disabled={
+                      selectedNoteIndex === null ||
+                      new Set(
+                        result.notes.map((note) => note.instrumentId),
+                      ).size < 2
+                    }
+                  >
+                    Next instrument
+                  </button>
                   <button type="button" onClick={addNoteAtPreview}>
                     Add at playhead
                   </button>
@@ -1134,8 +1152,9 @@ export default function Home() {
                   <button
                     type="button"
                     className={selectedNoteIndex === index ? "selected" : ""}
+                    data-instrument={note.instrumentId}
                     key={`${note.startTimeSeconds}-${note.pitchMidi}-${index}`}
-                    aria-label={`MIDI note ${note.pitchMidi} at ${formatDuration(note.startTimeSeconds)}`}
+                    aria-label={`${note.instrumentName ?? "Instrument"} MIDI note ${note.pitchMidi} at ${formatDuration(note.startTimeSeconds)}`}
                     onClick={() => setSelectedNoteIndex(index)}
                     style={{
                       left: `${

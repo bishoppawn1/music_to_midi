@@ -3,6 +3,7 @@ import test from "node:test";
 import type { CleanNote } from "../app/note-cleanup.ts";
 import {
   addNoteAt,
+  cycleNoteInstrument,
   deleteNote,
   transposeNote,
 } from "../app/note-editing.ts";
@@ -38,4 +39,50 @@ test("deletes a selected note and adds a missing note at the playhead", () => {
   assert.equal(added.length, 3);
   assert.equal(added[1].startTimeSeconds, 1.5);
   assert.equal(added[1].pitchMidi, 64);
+});
+
+test("a manually added note inherits the nearest instrument track", () => {
+  const trackedNotes: CleanNote[] = [
+    {
+      ...notes[0],
+      instrumentId: "piano",
+      instrumentName: "Acoustic piano",
+      instrumentProgram: 0,
+    },
+    {
+      ...notes[1],
+      instrumentId: "trumpet",
+      instrumentName: "Trumpet",
+      instrumentProgram: 56,
+    },
+  ];
+
+  const added = addNoteAt(trackedNotes, 1.9);
+  const inserted = added.find((note) => note.startTimeSeconds === 1.9);
+
+  assert.equal(inserted?.instrumentId, "trumpet");
+  assert.equal(inserted?.instrumentProgram, 56);
+});
+
+test("cycles a selected note between the available instrument tracks", () => {
+  const trackedNotes: CleanNote[] = [
+    {
+      ...notes[0],
+      instrumentId: "piano",
+      instrumentName: "Acoustic piano",
+      instrumentProgram: 0,
+    },
+    {
+      ...notes[1],
+      instrumentId: "trumpet",
+      instrumentName: "Trumpet",
+      instrumentProgram: 56,
+    },
+  ];
+
+  const reassigned = cycleNoteInstrument(trackedNotes, 0);
+
+  assert.equal(reassigned[0].instrumentId, "trumpet");
+  assert.equal(reassigned[0].instrumentProgram, 56);
+  assert.equal(reassigned[1].instrumentId, "trumpet");
 });

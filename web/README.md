@@ -39,16 +39,24 @@ shadows without discarding strong chord tones. Edge recovery is gentler for
 onsets than sustained frames so it recovers range extremes without creating as
 many false attacks.
 
-**Instrument profile** adds a physical plausibility pass after those confidence
-checks. Automatic mode conservatively distinguishes a low solo part, another
-one-note lead, and a polyphonic piano/keyboard-like part. A visitor can override
-that result with Voice / solo, Bass, Guitar, Piano / keys, or Ensemble. Each
-profile has a usual simultaneous-note target and a hard physical ceiling:
-piano targets about six notes and cannot retain more than ten, while guitar
-cannot retain more than six. Notes above the usual target survive only when
-they have both a strong onset and agreement across decoding passes. If a valid
-held note becomes implausible only when a later chord begins, it is shortened at
-that chord rather than deleted from its earlier, valid passage.
+**Instrument setup** adds musical-role separation and a physical plausibility
+pass after those confidence checks. Automatic mode keeps an ordinary chordal
+performance on one piano track, but separates an independently moving
+monophonic lead from chordal accompaniment when the note patterns clearly
+differ. Because Basic Pitch does not identify timbre, automatic mode labels that
+part as a generic Solo lead. A visitor who knows the source instrumentation can
+choose an exact two-track setup such as **Piano + trumpet** or **Piano + bass**.
+Those choices assign every detected note to exactly one instrument and write
+separate General MIDI tracks, programs, and channels.
+
+Single-instrument choices remain available for Voice / solo, Bass, Guitar,
+Piano / keys, and Ensemble. Each track is cleaned against its own realistic
+simultaneous-note target and hard physical ceiling: piano targets about six
+notes and cannot retain more than ten, while guitar cannot retain more than
+six. Notes above the usual target survive only when they have both a strong
+onset and agreement across decoding passes. If a valid held note becomes
+implausible only when a later chord begins, it is shortened at that chord rather
+than deleted from its earlier, valid passage.
 
 The interface explains the three modes in plain language:
 
@@ -76,8 +84,10 @@ source performance.
 
 The result includes a seekable preview timeline and a lightweight piano-roll
 correction view. A visitor can jump to any point, select and transpose a note,
-delete a false note, or add a missing note at the playhead. Each correction
-immediately regenerates the downloadable MIDI in the browser.
+delete a false note, add a missing note at the playhead, or move a selected note
+to the next detected instrument track. Track colors and preview waveforms make
+the assignments distinguishable before download. Each correction immediately
+regenerates the multi-track MIDI in the browser.
 
 The preview speed control ranges from **0.1×** to **4.0×** in 0.1× steps. Speed
 changes take effect while the preview is playing, and the playhead continues to

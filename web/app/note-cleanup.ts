@@ -5,6 +5,11 @@ export type CleanNote = {
   amplitude: number;
   onsetConfidence: number;
   pitchBends?: number[];
+  instrumentId?: string;
+  instrumentName?: string;
+  instrumentProgram?: number;
+  instrumentProfileId?: string;
+  instrumentMonophonic?: boolean;
 };
 
 const DEFAULT_SAMPLE_RATE = 22_050;
@@ -55,8 +60,8 @@ export function mergeNoteSpans(primary: CleanNote, fragment: CleanNote) {
  * Joins only near-contiguous fragments that the model did not mark as a real
  * onset. Deliberate repeated notes are kept even when they touch each other.
  */
-export function cleanRetriggers(
-  notes: CleanNote[],
+export function cleanRetriggers<T extends CleanNote>(
+  notes: T[],
   samples: Float32Array,
   sampleRate = DEFAULT_SAMPLE_RATE,
 ) {
@@ -64,12 +69,12 @@ export function cleanRetriggers(
     (left, right) =>
       left.startTimeSeconds - right.startTimeSeconds || left.pitchMidi - right.pitchMidi,
   );
-  const cleaned: CleanNote[] = [];
-  const latestByPitch = new Map<number, CleanNote>();
+  const cleaned: T[] = [];
+  const latestByPitch = new Map<number, T>();
   let merged = 0;
 
   for (const sourceNote of ordered) {
-    const note = { ...sourceNote };
+    const note = { ...sourceNote } as T;
     const previous = latestByPitch.get(note.pitchMidi);
     if (previous) {
       const previousEnd = previous.startTimeSeconds + previous.durationSeconds;

@@ -17,6 +17,8 @@ test("GitHub Pages root is the converter application", async () => {
     editing,
     cleanup,
     instrumentPolyphony,
+    instrumentArrangement,
+    midiOutput,
     packageJson,
     assets,
   ] = await Promise.all([
@@ -32,6 +34,8 @@ test("GitHub Pages root is the converter application", async () => {
     readFile(new URL("../app/note-editing.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/note-cleanup.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/instrument-polyphony.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/instrument-arrangement.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/midi-output.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("site-assets/", root)),
   ]);
@@ -53,20 +57,25 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /recoverPitchEdges\(onsets, pitchRange, 1\.08\)/);
   assert.match(page, /Note direction/);
   assert.match(page, /Transcription mode/);
-  assert.match(page, /Instrument profile/);
+  assert.match(page, /Instrument setup/);
   assert.match(page, /What do these music modes mean\?/);
-  assert.match(page, /applyNoteDirection\(cleaned\.notes, noteDirection\)/);
+  assert.match(page, /applyNoteDirection\(cleanedNotes, noteDirection\)/);
   assert.match(page, /fuseAdaptivePasses\(passes\)/);
   assert.match(page, /keepConfidentCandidates/);
   assert.match(page, /applyTranscriptionMode/);
   assert.match(page, /applyInstrumentPolyphony/);
+  assert.match(page, /arrangeInstrumentTracks/);
+  assert.match(page, /makeMultiTrackMidi/);
+  assert.match(page, /previewWaveform/);
+  assert.match(page, /data-instrument/);
   assert.match(page, /prepareAudioChannels/);
-  assert.match(page, /pitchBendToMidiValue/);
+  assert.match(midiOutput, /pitchBendToMidiValue/);
   assert.match(page, /aria-label="Preview position"/);
   assert.match(page, /aria-label="Preview playback speed"/);
   assert.match(page, /Decrease preview speed/);
   assert.match(page, /Increase preview speed/);
   assert.match(page, /Add at playhead/);
+  assert.match(page, /Next instrument/);
   assert.match(page, /scheduleWindow\(offset, scheduledThrough, true\)/);
   assert.match(page, /linearRampToValueAtTime/);
   assert.match(page, /onClick=\{\(event\) =>/);
@@ -79,7 +88,7 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(filename, /date\.getHours\(\)/);
   assert.match(filename, /\.mid/);
   assert.match(page, /compressor\.ratio\.value = 8/);
-  assert.match(page, /midiVelocity\(note\.amplitude\)/);
+  assert.match(midiOutput, /midiVelocity\(note\.amplitude\)/);
   assert.match(page, /previewNoteGain\(note\.amplitude\)/);
   assert.match(playback, /PREVIEW_MASTER_GAIN = 0\.9/);
   assert.match(playback, /return 0\.62 \+/);
@@ -99,6 +108,11 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(cleanup, /endTimeSeconds - startTimeSeconds/);
   assert.match(instrumentPolyphony, /Piano \/ keys · about 6, max 10/);
   assert.match(instrumentPolyphony, /maximumPolyphony/);
+  assert.match(instrumentArrangement, /piano \+ trumpet/i);
+  assert.match(instrumentArrangement, /midiProgram:\s*56/);
+  assert.match(midiOutput, /notesByInstrument/);
+  assert.match(midiOutput, /track\.instrument\.number/);
+  assert.match(midiOutput, /track\.channel/);
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);

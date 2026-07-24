@@ -39,6 +39,17 @@ shadows without discarding strong chord tones. Edge recovery is gentler for
 onsets than sustained frames so it recovers range extremes without creating as
 many false attacks.
 
+**Instrument profile** adds a physical plausibility pass after those confidence
+checks. Automatic mode conservatively distinguishes a low solo part, another
+one-note lead, and a polyphonic piano/keyboard-like part. A visitor can override
+that result with Voice / solo, Bass, Guitar, Piano / keys, or Ensemble. Each
+profile has a usual simultaneous-note target and a hard physical ceiling:
+piano targets about six notes and cannot retain more than ten, while guitar
+cannot retain more than six. Notes above the usual target survive only when
+they have both a strong onset and agreement across decoding passes. If a valid
+held note becomes implausible only when a later chord begins, it is shortened at
+that chord rather than deleted from its earlier, valid passage.
+
 The interface explains the three modes in plain language:
 
 - **Automatic** listens first and chooses for the visitor.

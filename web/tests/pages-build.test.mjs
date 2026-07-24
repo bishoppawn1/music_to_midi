@@ -16,6 +16,7 @@ test("GitHub Pages root is the converter application", async () => {
     timeline,
     editing,
     cleanup,
+    instrumentPolyphony,
     packageJson,
     assets,
   ] = await Promise.all([
@@ -30,6 +31,7 @@ test("GitHub Pages root is the converter application", async () => {
     readFile(new URL("../app/preview-timeline.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/note-editing.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/note-cleanup.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/instrument-polyphony.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("site-assets/", root)),
   ]);
@@ -51,11 +53,13 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /recoverPitchEdges\(onsets, pitchRange, 1\.08\)/);
   assert.match(page, /Note direction/);
   assert.match(page, /Transcription mode/);
+  assert.match(page, /Instrument profile/);
   assert.match(page, /What do these music modes mean\?/);
   assert.match(page, /applyNoteDirection\(cleaned\.notes, noteDirection\)/);
   assert.match(page, /fuseAdaptivePasses\(passes\)/);
   assert.match(page, /keepConfidentCandidates/);
   assert.match(page, /applyTranscriptionMode/);
+  assert.match(page, /applyInstrumentPolyphony/);
   assert.match(page, /prepareAudioChannels/);
   assert.match(page, /pitchBendToMidiValue/);
   assert.match(page, /aria-label="Preview position"/);
@@ -93,6 +97,8 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(editing, /deleteNote/);
   assert.match(cleanup, /mergeNoteSpans/);
   assert.match(cleanup, /endTimeSeconds - startTimeSeconds/);
+  assert.match(instrumentPolyphony, /Piano \/ keys · about 6, max 10/);
+  assert.match(instrumentPolyphony, /maximumPolyphony/);
   assert.doesNotMatch(page, /window\.open/);
   assert.doesNotMatch(page, /\/api\/audio|VITE_AUDIO_API_ORIGIN/);
   assert.doesNotMatch(packageJson, /cloudflare|wrangler|youtubei\.js|vinext/);

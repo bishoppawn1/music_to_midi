@@ -12,6 +12,11 @@ import {
 } from "./detection-settings";
 import { makeDownloadFilename } from "./download-filename";
 import {
+  applyInstrumentPolyphony,
+  INSTRUMENT_PROFILE_OPTIONS,
+  type InstrumentProfileId,
+} from "./instrument-polyphony";
+import {
   addNoteAt,
   deleteNote,
   transposeNote,
@@ -74,6 +79,9 @@ type Result = {
   downloadTitle: string;
   directionLabel: string;
   resolvedMode: ResolvedTranscriptionMode;
+  instrumentLabel: string;
+  instrumentInferred: boolean;
+  excessNotesRemoved: number;
 };
 
 type CaptureSession = {
@@ -201,6 +209,8 @@ export default function Home() {
   const [pitchRange, setPitchRange] = useState<PitchRangeId>("full");
   const [transcriptionMode, setTranscriptionMode] =
     useState<TranscriptionMode>("auto");
+  const [instrumentProfile, setInstrumentProfile] =
+    useState<InstrumentProfileId>("auto");
   const [noteDirection, setNoteDirection] = useState<NoteDirection>("forward");
   const [captureSeconds, setCaptureSeconds] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
@@ -528,7 +538,12 @@ export default function Home() {
         (time) => hasFreshAttack(samples, time, SAMPLE_RATE),
       );
       const modeApplied = applyTranscriptionMode(confident, transcriptionMode);
-      const cleaned = cleanRetriggers(modeApplied.notes, samples);
+      const limited = applyInstrumentPolyphony(
+        modeApplied.notes,
+        instrumentProfile,
+        modeApplied.resolvedMode,
+      );
+      const cleaned = cleanRetriggers(limited.notes, samples);
       if (!cleaned.notes.length) throw new Error("No clear musical notes were detected.");
 
       const directedNotes = applyNoteDirection(cleaned.notes, noteDirection);
@@ -545,6 +560,9 @@ export default function Home() {
         downloadTitle: isReversed ? `${title}-reverse` : title,
         directionLabel: isReversed ? "reverse order" : "forward order",
         resolvedMode: modeApplied.resolvedMode,
+        instrumentLabel: limited.profile.name,
+        instrumentInferred: limited.profile.inferred,
+        excessNotesRemoved: limited.removed + limited.trimmed,
       });
       setPreviewTime(0);
       setSelectedNoteIndex(null);
@@ -814,6 +832,22 @@ export default function Home() {
                 ))}
               </select>
             </label>
+            <label>
+              <span>Instrument profile</span>
+              <select
+                value={instrumentProfile}
+                onChange={(event) =>
+                  setInstrumentProfile(event.target.value as InstrumentProfileId)
+                }
+                disabled={busy}
+              >
+                {INSTRUMENT_PROFILE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <section
             className="mode-guide"
@@ -837,7 +871,8 @@ export default function Home() {
               {SENSITIVITY_OPTIONS.find((option) => option.id === sensitivity)?.description}{" "}
               {PITCH_RANGE_OPTIONS.find((option) => option.id === pitchRange)?.description}{" "}
               {NOTE_DIRECTION_OPTIONS.find((option) => option.id === noteDirection)?.description}{" "}
-              {TRANSCRIPTION_MODE_OPTIONS.find((option) => option.id === transcriptionMode)?.description}
+              {TRANSCRIPTION_MODE_OPTIONS.find((option) => option.id === transcriptionMode)?.description}{" "}
+              {INSTRUMENT_PROFILE_OPTIONS.find((option) => option.id === instrumentProfile)?.description}
             </span>
             <span>Single-tab audio capture · up to 10 minutes</span>
           </div>
@@ -956,6 +991,9 @@ export default function Home() {
                 <p>
                   {result.notes.length} notes · {formatDuration(result.duration)} ·{" "}
                   {result.resolvedMode} mode · {result.directionLabel} ·{" "}
+                  {result.instrumentLabel}
+                  {result.instrumentInferred ? " (automatic)" : ""} ·{" "}
+                  {result.excessNotesRemoved} excess-polyphony notes cleaned ·{" "}
                   {result.merged} duplicate-looking retriggers joined
                 </p>
               </div>

@@ -39,24 +39,24 @@ shadows without discarding strong chord tones. Edge recovery is gentler for
 onsets than sustained frames so it recovers range extremes without creating as
 many false attacks.
 
-**Instrument setup** adds musical-role separation and a physical plausibility
-pass after those confidence checks. Automatic mode keeps an ordinary chordal
-performance on one piano track, but separates an independently moving
-monophonic lead from chordal accompaniment when the note patterns clearly
-differ. Because Basic Pitch does not identify timbre, automatic mode labels that
-part as a generic Solo lead. A visitor who knows the source instrumentation can
-choose an exact two-track setup such as **Piano + trumpet** or **Piano + bass**.
-Those choices assign every detected note to exactly one instrument and write
-separate General MIDI tracks, programs, and channels.
+Instrument discovery is automatic. There is no instrument preset or setup for
+the visitor to choose. The app first separates independently moving bass, lead,
+and accompaniment roles from their timing, register, and overlap. It then
+examines the captured waveform around those notes for attack strength, decay,
+sustain, and harmonic brightness. Those signals select the most likely General
+MIDI family—currently acoustic piano, steel guitar, fingered bass, string
+ensemble, trumpet, or flute—and every note is assigned to exactly one matching
+track, program, and channel.
 
-Single-instrument choices remain available for Voice / solo, Bass, Guitar,
-Piano / keys, and Ensemble. Each track is cleaned against its own realistic
-simultaneous-note target and hard physical ceiling: piano targets about six
-notes and cannot retain more than ten, while guitar cannot retain more than
-six. Notes above the usual target survive only when they have both a strong
-onset and agreement across decoding passes. If a valid held note becomes
-implausible only when a later chord begins, it is shortened at that chord rather
-than deleted from its earlier, valid passage.
+These names are estimates because a mixed recording can mask an individual
+instrument's harmonics. The piano-roll correction control remains available to
+move a misassigned note to another automatically discovered track. Each track
+is cleaned against its own realistic simultaneous-note target and hard physical
+ceiling: piano targets about six notes and cannot retain more than ten, while
+guitar cannot retain more than six. Notes above the usual target survive only
+when they have both a strong onset and agreement across decoding passes. If a
+valid held note becomes implausible only when a later chord begins, it is
+shortened at that chord rather than deleted from its earlier, valid passage.
 
 The interface explains the three modes in plain language:
 

@@ -57,7 +57,7 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /recoverPitchEdges\(onsets, pitchRange, 1\.08\)/);
   assert.match(page, /Note direction/);
   assert.match(page, /Transcription mode/);
-  assert.match(page, /Instrument setup/);
+  assert.doesNotMatch(page, /Instrument setup/);
   assert.match(page, /What do these music modes mean\?/);
   assert.match(page, /applyNoteDirection\(cleanedNotes, noteDirection\)/);
   assert.match(page, /fuseAdaptivePasses\(passes\)/);
@@ -108,7 +108,9 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(cleanup, /endTimeSeconds - startTimeSeconds/);
   assert.match(instrumentPolyphony, /Piano \/ keys · about 6, max 10/);
   assert.match(instrumentPolyphony, /maximumPolyphony/);
-  assert.match(instrumentArrangement, /piano \+ trumpet/i);
+  assert.doesNotMatch(instrumentArrangement, /piano-trumpet|piano-bass/);
+  assert.match(instrumentArrangement, /summarizeTimbre/);
+  assert.match(instrumentArrangement, /classifyLikelyInstrument/);
   assert.match(instrumentArrangement, /midiProgram:\s*56/);
   assert.match(midiOutput, /notesByInstrument/);
   assert.match(midiOutput, /track\.instrument\.number/);

@@ -1,85 +1,36 @@
 import type { AdaptiveNote, ResolvedTranscriptionMode } from "./transcription-accuracy";
-import type {
-  InstrumentProfileId,
-  ResolvedInstrumentProfileId,
-} from "./instrument-polyphony";
+import type { ResolvedInstrumentProfileId } from "./instrument-polyphony";
 
-export const INSTRUMENT_SETUP_OPTIONS = [
-  {
-    id: "auto",
-    label: "Automatic · split musical roles",
-    description:
-      "Finds a separate lead and accompaniment when their note patterns clearly differ.",
-  },
-  {
-    id: "solo",
-    label: "Single · voice / solo",
-    description: "Writes one monophonic lead track.",
-  },
-  {
-    id: "bass",
-    label: "Single · bass",
-    description: "Writes one bass track with room for an occasional double-stop.",
-  },
-  {
-    id: "guitar",
-    label: "Single · guitar",
-    description: "Writes one guitar track with no more than six simultaneous strings.",
-  },
-  {
-    id: "piano",
-    label: "Single · piano / keys",
-    description: "Writes one piano track targeting six notes with a maximum of ten.",
-  },
-  {
-    id: "ensemble",
-    label: "Single · ensemble",
-    description: "Writes one denser ensemble track.",
-  },
-  {
-    id: "piano-trumpet",
-    label: "Two tracks · piano + trumpet",
-    description:
-      "Assigns the upper monophonic line to trumpet and the remaining notes to piano.",
-  },
-  {
-    id: "piano-bass",
-    label: "Two tracks · piano + bass",
-    description:
-      "Assigns the lower monophonic line to bass and the remaining notes to piano.",
-  },
-] as const;
+export type TimbreSummary = {
+  attackContrast: number;
+  sustainRatio: number;
+  harmonicBrightness: number;
+  medianDuration: number;
+};
 
-export type InstrumentSetupId =
-  (typeof INSTRUMENT_SETUP_OPTIONS)[number]["id"];
+type InstrumentRole = "lead" | "bass" | "accompaniment";
 
-export type InstrumentTrack = {
+type InstrumentDefinition = {
   id: string;
   name: string;
   midiProgram: number;
   profileId: ResolvedInstrumentProfileId;
-  mode: ResolvedTranscriptionMode;
   monophonic: boolean;
-  notes: AdaptiveNote[];
 };
 
-const SINGLE_INSTRUMENTS: Record<
-  ResolvedInstrumentProfileId,
-  Omit<InstrumentTrack, "notes" | "mode">
-> = {
-  solo: {
-    id: "solo",
-    name: "Solo lead",
-    midiProgram: 73,
-    profileId: "solo",
-    monophonic: true,
-  },
-  bass: {
-    id: "bass",
-    name: "Fingered bass",
-    midiProgram: 33,
-    profileId: "bass",
-    monophonic: true,
+export type InstrumentTrack = InstrumentDefinition & {
+  mode: ResolvedTranscriptionMode;
+  notes: AdaptiveNote[];
+  timbre: TimbreSummary;
+};
+
+const INSTRUMENTS: Record<string, InstrumentDefinition> = {
+  piano: {
+    id: "piano",
+    name: "Acoustic piano",
+    midiProgram: 0,
+    profileId: "piano",
+    monophonic: false,
   },
   guitar: {
     id: "guitar",
@@ -88,37 +39,191 @@ const SINGLE_INSTRUMENTS: Record<
     profileId: "guitar",
     monophonic: false,
   },
-  piano: {
-    id: "piano",
-    name: "Acoustic piano",
-    midiProgram: 0,
-    profileId: "piano",
-    monophonic: false,
+  bass: {
+    id: "bass",
+    name: "Fingered bass",
+    midiProgram: 33,
+    profileId: "bass",
+    monophonic: true,
   },
-  ensemble: {
+  strings: {
     id: "ensemble",
     name: "String ensemble",
     midiProgram: 48,
     profileId: "ensemble",
     monophonic: false,
   },
+  trumpet: {
+    id: "trumpet",
+    name: "Trumpet",
+    midiProgram: 56,
+    profileId: "solo",
+    monophonic: true,
+  },
+  flute: {
+    id: "flute",
+    name: "Flute",
+    midiProgram: 73,
+    profileId: "solo",
+    monophonic: true,
+  },
 };
 
-const TRUMPET_TRACK: Omit<InstrumentTrack, "notes" | "mode"> = {
-  id: "trumpet",
-  name: "Trumpet",
-  midiProgram: 56,
-  profileId: "solo",
-  monophonic: true,
-};
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
 
-const AUTOMATIC_LEAD_TRACK: Omit<InstrumentTrack, "notes" | "mode"> = {
-  id: "lead",
-  name: "Solo lead",
-  midiProgram: 80,
-  profileId: "solo",
-  monophonic: true,
-};
+function median(values: number[], fallback = 0) {
+  if (!values.length) return fallback;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function quantile(values: number[], fraction: number, fallback = 0) {
+  if (!values.length) return fallback;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.floor((sorted.length - 1) * fraction)];
+}
+
+function rms(samples: Float32Array, from: number, to: number) {
+  const start = Math.max(0, Math.floor(from));
+  const end = Math.min(samples.length, Math.ceil(to));
+  if (end <= start) return 0;
+  let sum = 0;
+  for (let index = start; index < end; index += 1) {
+    sum += samples[index] * samples[index];
+  }
+  return Math.sqrt(sum / (end - start));
+}
+
+function differenceRms(samples: Float32Array, from: number, to: number) {
+  const start = Math.max(1, Math.floor(from));
+  const end = Math.min(samples.length, Math.ceil(to));
+  if (end <= start) return 0;
+  let sum = 0;
+  for (let index = start; index < end; index += 1) {
+    const difference = samples[index] - samples[index - 1];
+    sum += difference * difference;
+  }
+  return Math.sqrt(sum / (end - start));
+}
+
+/**
+ * Estimates attack, decay, and harmonic complexity around the notes assigned
+ * to one musical role. Comparing the first-difference energy with the expected
+ * fundamental keeps a high trumpet pitch from looking bright merely because
+ * it is high.
+ */
+export function summarizeTimbre(
+  notes: AdaptiveNote[],
+  samples: Float32Array,
+  sampleRate = 22_050,
+): TimbreSummary {
+  const attacks: number[] = [];
+  const sustains: number[] = [];
+  const brightness: number[] = [];
+
+  for (const note of notes) {
+    const start = note.startTimeSeconds * sampleRate;
+    const end =
+      (note.startTimeSeconds + Math.max(0.04, note.durationSeconds)) *
+      sampleRate;
+    const before = rms(
+      samples,
+      start - sampleRate * 0.055,
+      start - sampleRate * 0.008,
+    );
+    const attackEnd = Math.min(end, start + sampleRate * 0.065);
+    const attack = rms(samples, start, attackEnd);
+    const bodyStart = Math.min(end, start + sampleRate * 0.12);
+    const bodyEnd = Math.min(end, start + sampleRate * 0.34);
+    const body = rms(samples, bodyStart, bodyEnd);
+    attacks.push(attack / Math.max(0.006, before));
+    sustains.push(clamp(body / Math.max(0.006, attack), 0, 2));
+
+    if (body > 0.006 && bodyEnd > bodyStart) {
+      const difference = differenceRms(samples, bodyStart, bodyEnd);
+      const fundamentalFrequency = 440 * 2 ** ((note.pitchMidi - 69) / 12);
+      const expectedDifference = Math.max(
+        0.001,
+        2 * Math.sin((Math.PI * fundamentalFrequency) / sampleRate),
+      );
+      brightness.push(
+        clamp(difference / body / expectedDifference, 0, 8),
+      );
+    }
+  }
+
+  return {
+    attackContrast: median(attacks, 1),
+    sustainRatio: median(sustains, 0.7),
+    harmonicBrightness: median(brightness, 1),
+    medianDuration: median(
+      notes.map((note) => note.durationSeconds),
+      0.5,
+    ),
+  };
+}
+
+function maximumOnsetPolyphony(notes: AdaptiveNote[]) {
+  return notes.reduce((maximum, note) => {
+    const simultaneous = notes.filter(
+      (other) =>
+        Math.abs(other.startTimeSeconds - note.startTimeSeconds) <= 0.06,
+    ).length;
+    return Math.max(maximum, simultaneous);
+  }, 0);
+}
+
+/**
+ * Maps measurable role and timbre evidence to a likely General MIDI family.
+ * These labels are estimates, so the piano-roll correction control remains
+ * available when a mixed recording masks an instrument's harmonics.
+ */
+export function classifyLikelyInstrument(
+  role: InstrumentRole,
+  timbre: TimbreSummary,
+  notes: AdaptiveNote[],
+) {
+  if (role === "bass") return INSTRUMENTS.bass;
+
+  if (role === "lead") {
+    const percussive =
+      timbre.attackContrast >= 2.4 && timbre.sustainRatio < 0.72;
+    if (percussive) {
+      return quantile(
+        notes.map((note) => note.pitchMidi),
+        0.8,
+        60,
+      ) <= 76
+        ? INSTRUMENTS.guitar
+        : INSTRUMENTS.piano;
+    }
+    return timbre.harmonicBrightness >= 1.65
+      ? INSTRUMENTS.trumpet
+      : INSTRUMENTS.flute;
+  }
+
+  const pitches = notes.map((note) => note.pitchMidi);
+  const pitchSpan = pitches.length
+    ? Math.max(...pitches) - Math.min(...pitches)
+    : 0;
+  const sustained =
+    timbre.sustainRatio >= 0.82 &&
+    timbre.medianDuration >= 0.75 &&
+    timbre.attackContrast < 2.2;
+  if (sustained) return INSTRUMENTS.strings;
+
+  const guitarLike =
+    maximumOnsetPolyphony(notes) <= 6 &&
+    pitchSpan <= 45 &&
+    timbre.attackContrast >= 2.1 &&
+    timbre.medianDuration < 1.1;
+  return guitarLike ? INSTRUMENTS.guitar : INSTRUMENTS.piano;
+}
 
 function confidenceScore(note: AdaptiveNote) {
   const consensus = Math.min(3, Math.max(0, note.support)) / 3;
@@ -154,11 +259,6 @@ function voiceScore(
   );
 }
 
-/**
- * Selects one credible, non-overlapping outer voice. This is musical-role
- * separation rather than a timbre claim: an explicit setup supplies the exact
- * General MIDI instrument when the listener knows it.
- */
 export function selectOuterVoice(
   notes: AdaptiveNote[],
   direction: "upper" | "lower",
@@ -195,16 +295,16 @@ function splitVoice(notes: AdaptiveNote[], direction: "upper" | "lower") {
   };
 }
 
-function hasIndependentLead(
-  lead: AdaptiveNote[],
+function hasIndependentVoice(
+  voice: AdaptiveNote[],
   accompaniment: AdaptiveNote[],
 ) {
-  if (lead.length < 3 || accompaniment.length < 3) return false;
-  const independentOnsets = lead.filter(
-    (leadNote) =>
+  if (voice.length < 3 || accompaniment.length < 3) return false;
+  const independentOnsets = voice.filter(
+    (voiceNote) =>
       accompaniment.every(
         (note) =>
-          Math.abs(note.startTimeSeconds - leadNote.startTimeSeconds) > 0.06,
+          Math.abs(note.startTimeSeconds - voiceNote.startTimeSeconds) > 0.06,
       ),
   ).length;
   const accompanimentHasChords = accompaniment.some((note, index) =>
@@ -215,78 +315,79 @@ function hasIndependentLead(
         overlapRatio(note, other) >= 0.45,
     ),
   );
-  return accompanimentHasChords && independentOnsets / lead.length >= 0.34;
+  return accompanimentHasChords && independentOnsets / voice.length >= 0.34;
 }
 
-function makeTrack(
-  definition: Omit<InstrumentTrack, "notes" | "mode">,
+function makeLikelyTrack(
+  role: InstrumentRole,
   notes: AdaptiveNote[],
-  mode: ResolvedTranscriptionMode,
+  samples: Float32Array,
+  sampleRate: number,
 ): InstrumentTrack {
-  return { ...definition, notes, mode };
+  const timbre = summarizeTimbre(notes, samples, sampleRate);
+  const definition = classifyLikelyInstrument(role, timbre, notes);
+  return {
+    ...definition,
+    notes,
+    mode: role === "accompaniment" ? "chords" : "melody",
+    timbre,
+  };
 }
 
 export function arrangeInstrumentTracks(
   notes: AdaptiveNote[],
-  requested: InstrumentSetupId,
   mode: ResolvedTranscriptionMode,
+  samples: Float32Array,
+  sampleRate = 22_050,
 ) {
-  if (requested === "piano-trumpet" || requested === "piano-bass") {
-    const isTrumpet = requested === "piano-trumpet";
-    const { voice, accompaniment } = splitVoice(
-      notes,
-      isTrumpet ? "upper" : "lower",
+  if (mode === "melody") {
+    const upperPitch = quantile(
+      notes.map((note) => note.pitchMidi),
+      0.8,
+      60,
     );
-    const voiceDefinition = isTrumpet
-      ? TRUMPET_TRACK
-      : SINGLE_INSTRUMENTS.bass;
     return {
       tracks: [
-        makeTrack(SINGLE_INSTRUMENTS.piano, accompaniment, "chords"),
-        makeTrack(voiceDefinition, voice, "melody"),
-      ].filter((track) => track.notes.length),
-      inferred: false,
-    };
-  }
-
-  if (requested !== "auto") {
-    return {
-      tracks: [
-        makeTrack(
-          SINGLE_INSTRUMENTS[requested as ResolvedInstrumentProfileId],
+        makeLikelyTrack(
+          upperPitch <= 55 ? "bass" : "lead",
           notes,
-          mode,
+          samples,
+          sampleRate,
         ),
       ],
-      inferred: false,
-    };
-  }
-
-  if (mode === "chords") {
-    const { voice, accompaniment } = splitVoice(notes, "upper");
-    if (hasIndependentLead(voice, accompaniment)) {
-      return {
-        tracks: [
-          makeTrack(SINGLE_INSTRUMENTS.piano, accompaniment, "chords"),
-          makeTrack(AUTOMATIC_LEAD_TRACK, voice, "melody"),
-        ],
-        inferred: true,
-      };
-    }
-    return {
-      tracks: [makeTrack(SINGLE_INSTRUMENTS.piano, notes, "chords")],
       inferred: true,
     };
   }
 
-  const pitches = [...notes]
-    .map((note) => note.pitchMidi)
-    .sort((left, right) => left - right);
-  const upperPitch = pitches[Math.floor(Math.max(0, pitches.length - 1) * 0.8)] ?? 60;
-  const profileId: ResolvedInstrumentProfileId =
-    upperPitch <= 55 ? "bass" : "solo";
+  let accompaniment = notes;
+  const separated: Array<{ role: InstrumentRole; notes: AdaptiveNote[] }> = [];
+  const lower = splitVoice(accompaniment, "lower");
+  const lowerUpperPitch = quantile(
+    lower.voice.map((note) => note.pitchMidi),
+    0.8,
+    127,
+  );
+  if (
+    lowerUpperPitch <= 55 &&
+    hasIndependentVoice(lower.voice, lower.accompaniment)
+  ) {
+    separated.push({ role: "bass", notes: lower.voice });
+    accompaniment = lower.accompaniment;
+  }
+
+  const upper = splitVoice(accompaniment, "upper");
+  if (hasIndependentVoice(upper.voice, upper.accompaniment)) {
+    separated.push({ role: "lead", notes: upper.voice });
+    accompaniment = upper.accompaniment;
+  }
+  if (accompaniment.length) {
+    separated.unshift({ role: "accompaniment", notes: accompaniment });
+  }
+
   return {
-    tracks: [makeTrack(SINGLE_INSTRUMENTS[profileId], notes, "melody")],
+    tracks: separated.map(({ role, notes: roleNotes }) =>
+      makeLikelyTrack(role, roleNotes, samples, sampleRate),
+    ),
     inferred: true,
   };
 }
@@ -297,7 +398,7 @@ export function annotateTrackNotes(track: InstrumentTrack) {
     instrumentId: track.id,
     instrumentName: track.name,
     instrumentProgram: track.midiProgram,
-    instrumentProfileId: track.profileId as InstrumentProfileId,
+    instrumentProfileId: track.profileId,
     instrumentMonophonic: track.monophonic,
   }));
 }

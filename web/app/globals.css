@@ -542,8 +542,8 @@ h1 em {
   transform: translateY(-50%);
 }
 .piano-roll button[data-instrument="bass"] { background: #6ee7f2; }
-.piano-roll button[data-instrument="trumpet"],
-.piano-roll button[data-instrument="lead"] { background: #ff9b54; }
+.piano-roll button[data-instrument="trumpet"] { background: #ff9b54; }
+.piano-roll button[data-instrument="flute"] { background: #86f7c5; }
 .piano-roll button[data-instrument="guitar"] { background: #ff7ec8; }
 .piano-roll button[data-instrument="ensemble"] { background: #b9a2ff; }
 .piano-roll button:hover,

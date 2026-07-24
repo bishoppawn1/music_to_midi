@@ -57,6 +57,11 @@ import {
   type ResolvedTranscriptionMode,
   type TranscriptionMode,
 } from "./transcription-accuracy";
+import {
+  activateSensitivityVersion,
+  sensitivityVersionUrls,
+  type SensitivityVersions,
+} from "./sensitivity-versions";
 
 type Phase =
   | "idle"
@@ -69,17 +74,22 @@ type Phase =
   | "ready"
   | "error";
 
-type Result = {
-  title: string;
-  duration: number;
+type ResultVariant = {
   notes: CleanNote[];
   merged: number;
   midiUrl: string;
-  downloadTitle: string;
-  directionLabel: string;
   resolvedMode: ResolvedTranscriptionMode;
   instrumentLabel: string;
   excessNotesRemoved: number;
+};
+
+type Result = ResultVariant & {
+  title: string;
+  duration: number;
+  downloadTitle: string;
+  directionLabel: string;
+  activeSensitivity: SensitivityId;
+  variants: SensitivityVersions<ResultVariant>;
 };
 
 type CaptureSession = {
@@ -392,6 +402,13 @@ export default function Home() {
     if (wasPlaying) startPreview(previewTime, nextSpeed);
   }
 
+  function revokeResultUrls(currentResult: Result | null) {
+    if (!currentResult) return;
+    for (const midiUrl of sensitivityVersionUrls(currentResult.variants)) {
+      URL.revokeObjectURL(midiUrl);
+    }
+  }
+
   function reset() {
     stopPreview();
     const capture = captureRef.current;
@@ -402,7 +419,7 @@ export default function Home() {
       if (capture.recorder.state !== "inactive") capture.recorder.stop();
       capture.stream.getTracks().forEach((track) => track.stop());
     }
-    if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
+    revokeResultUrls(result);
     setResult(null);
     setSelectedNoteIndex(null);
     setPreviewTime(0);
@@ -418,7 +435,7 @@ export default function Home() {
   function loadVideo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     stopPreview();
-    if (result?.midiUrl) URL.revokeObjectURL(result.midiUrl);
+    revokeResultUrls(result);
     setResult(null);
     setSelectedNoteIndex(null);
     setPreviewTime(0);
@@ -476,80 +493,122 @@ export default function Home() {
       );
 
       setPhase("cleaning");
-      const detection = getDetectionSettings(sensitivity, pitchRange);
       const recoveredFrames = recoverPitchEdges(frames, pitchRange, 1.2);
       const recoveredOnsets = recoverPitchEdges(onsets, pitchRange, 1.08);
-      const passes = adaptiveDecodeSettings(detection).map((pass) => {
-        const frameNotes = basicPitchModule.outputToNotesPoly(
-          recoveredFrames,
-          recoveredOnsets,
-          pass.onsetThreshold,
-          pass.frameThreshold,
-          pass.minNoteFrames,
-          pass.inferOnsets,
-          detection.maxFrequency,
-          detection.minFrequency,
-        );
-        const timedNotes = basicPitchModule.noteFramesToTime(
-          basicPitchModule.addPitchBendsToNoteEvents(contours, frameNotes),
-        );
-        return timedNotes.map((note, index) => ({
-          startTimeSeconds: note.startTimeSeconds,
-          durationSeconds: note.durationSeconds,
-          pitchMidi: note.pitchMidi,
-          amplitude: note.amplitude,
-          pitchBends: note.pitchBends,
-          onsetConfidence:
-            recoveredOnsets[frameNotes[index].startFrame]?.[
-              frameNotes[index].pitchMidi - 21
-            ] ?? 0,
-        }));
+      const candidateEntries = SENSITIVITY_OPTIONS.map((option) => {
+        const detection = getDetectionSettings(option.id, pitchRange);
+        const passes = adaptiveDecodeSettings(detection).map((pass) => {
+          const frameNotes = basicPitchModule.outputToNotesPoly(
+            recoveredFrames,
+            recoveredOnsets,
+            pass.onsetThreshold,
+            pass.frameThreshold,
+            pass.minNoteFrames,
+            pass.inferOnsets,
+            detection.maxFrequency,
+            detection.minFrequency,
+          );
+          const timedNotes = basicPitchModule.noteFramesToTime(
+            basicPitchModule.addPitchBendsToNoteEvents(contours, frameNotes),
+          );
+          return timedNotes.map((note, index) => ({
+            startTimeSeconds: note.startTimeSeconds,
+            durationSeconds: note.durationSeconds,
+            pitchMidi: note.pitchMidi,
+            amplitude: note.amplitude,
+            pitchBends: note.pitchBends,
+            onsetConfidence:
+              recoveredOnsets[frameNotes[index].startFrame]?.[
+                frameNotes[index].pitchMidi - 21
+              ] ?? 0,
+          }));
+        });
+        return [
+          option.id,
+          keepConfidentCandidates(
+            fuseAdaptivePasses(passes),
+            (time) => hasFreshAttack(samples, time, SAMPLE_RATE),
+          ),
+        ] as const;
       });
-      const fused = fuseAdaptivePasses(passes);
-      const confident = keepConfidentCandidates(
-        fused,
-        (time) => hasFreshAttack(samples, time, SAMPLE_RATE),
+      const candidatesBySensitivity = Object.fromEntries(
+        candidateEntries,
+      ) as SensitivityVersions<(typeof candidateEntries)[number][1]>;
+      const sharedResolvedMode = applyTranscriptionMode(
+        candidatesBySensitivity[sensitivity],
+        transcriptionMode,
+      ).resolvedMode;
+      const variantEntries = await Promise.all(
+        SENSITIVITY_OPTIONS.map(async (option) => {
+          const modeApplied = applyTranscriptionMode(
+            candidatesBySensitivity[option.id],
+            sharedResolvedMode,
+          );
+          const arrangement = arrangeInstrumentTracks(
+            modeApplied.notes,
+            sharedResolvedMode,
+            samples,
+            SAMPLE_RATE,
+          );
+          let excessNotesRemoved = 0;
+          let merged = 0;
+          const cleanedNotes = arrangement.tracks.flatMap((track) => {
+            const limited = applyInstrumentPolyphony(
+              track.notes,
+              track.profileId,
+              track.mode,
+            );
+            excessNotesRemoved += limited.removed + limited.trimmed;
+            const cleaned = cleanRetriggers(limited.notes, samples);
+            merged += cleaned.merged;
+            return annotateTrackNotes({ ...track, notes: cleaned.notes });
+          });
+          const directedNotes = applyNoteDirection(cleanedNotes, noteDirection);
+          const midiBytes = await makeMultiTrackMidi(directedNotes);
+          const midiData = Uint8Array.from(midiBytes);
+          const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
+          return [
+            option.id,
+            {
+              notes: directedNotes,
+              merged,
+              midiUrl: URL.createObjectURL(midiBlob),
+              resolvedMode: sharedResolvedMode,
+              instrumentLabel:
+                Array.from(
+                  new Set(arrangement.tracks.map((track) => track.name)),
+                ).join(" + ") || "no clear instrument",
+              excessNotesRemoved,
+            },
+          ] as const;
+        }),
       );
-      const modeApplied = applyTranscriptionMode(confident, transcriptionMode);
-      const arrangement = arrangeInstrumentTracks(
-        modeApplied.notes,
-        modeApplied.resolvedMode,
-        samples,
-        SAMPLE_RATE,
-      );
-      let excessNotesRemoved = 0;
-      let merged = 0;
-      const cleanedNotes = arrangement.tracks.flatMap((track) => {
-        const limited = applyInstrumentPolyphony(
-          track.notes,
-          track.profileId,
-          track.mode,
-        );
-        excessNotesRemoved += limited.removed + limited.trimmed;
-        const cleaned = cleanRetriggers(limited.notes, samples);
-        merged += cleaned.merged;
-        return annotateTrackNotes({ ...track, notes: cleaned.notes });
-      });
-      if (!cleanedNotes.length) throw new Error("No clear musical notes were detected.");
+      const variants = Object.fromEntries(
+        variantEntries,
+      ) as SensitivityVersions<ResultVariant>;
+      const activeVariant = variants[sensitivity];
+      if (!activeVariant.notes.length) {
+        revokeResultUrls({
+          ...activeVariant,
+          title,
+          duration: decoded.duration,
+          downloadTitle: title,
+          directionLabel: "forward order",
+          activeSensitivity: sensitivity,
+          variants,
+        });
+        throw new Error("No clear musical notes were detected.");
+      }
 
-      const directedNotes = applyNoteDirection(cleanedNotes, noteDirection);
       const isReversed = noteDirection === "reverse";
-      const midiBytes = await makeMultiTrackMidi(directedNotes);
-      const midiData = Uint8Array.from(midiBytes);
-      const midiBlob = new Blob([midiData.buffer], { type: "audio/midi" });
       setResult({
         title,
         duration: decoded.duration,
-        notes: directedNotes,
-        merged,
-        midiUrl: URL.createObjectURL(midiBlob),
         downloadTitle: isReversed ? `${title}-reverse` : title,
         directionLabel: isReversed ? "reverse order" : "forward order",
-        resolvedMode: modeApplied.resolvedMode,
-        instrumentLabel: Array.from(
-          new Set(arrangement.tracks.map((track) => track.name)),
-        ).join(" + "),
-        excessNotesRemoved,
+        activeSensitivity: sensitivity,
+        variants,
+        ...activeVariant,
       });
       setPreviewTime(0);
       setSelectedNoteIndex(null);
@@ -593,14 +652,37 @@ export default function Home() {
     const instrumentLabel = Array.from(
       new Set(notes.map((note) => note.instrumentName).filter(Boolean)),
     ).join(" + ");
-    setResult({
-      ...result,
+    const activeVariant = {
+      ...result.variants[result.activeSensitivity],
       notes,
       midiUrl,
       instrumentLabel: instrumentLabel || result.instrumentLabel,
+    };
+    setResult({
+      ...result,
+      ...activeVariant,
+      variants: {
+        ...result.variants,
+        [result.activeSensitivity]: activeVariant,
+      },
     });
     setPreviewTime((time) =>
       clampPreviewTime(time, previewDuration(notes, result.duration)),
+    );
+  }
+
+  function showSensitivityVersion(nextSensitivity: SensitivityId) {
+    setSensitivity(nextSensitivity);
+    if (!result) return;
+    stopPreview();
+    const nextResult = activateSensitivityVersion(result, nextSensitivity);
+    setResult(nextResult);
+    setSelectedNoteIndex(null);
+    setPreviewTime((time) =>
+      clampPreviewTime(
+        time,
+        previewDuration(nextResult.notes, nextResult.duration),
+      ),
     );
   }
 
@@ -780,7 +862,9 @@ export default function Home() {
               <span>Detection detail</span>
               <select
                 value={sensitivity}
-                onChange={(event) => setSensitivity(event.target.value as SensitivityId)}
+                onChange={(event) =>
+                  showSensitivityVersion(event.target.value as SensitivityId)
+                }
                 disabled={busy}
               >
                 {SENSITIVITY_OPTIONS.map((option) => (
@@ -993,6 +1077,36 @@ export default function Home() {
                 >
                   Download MIDI <span aria-hidden="true">↓</span>
                 </a>
+              </div>
+            </div>
+            <div className="sensitivity-switcher">
+              <div>
+                <span>DETECTION DETAIL VERSIONS</span>
+                <p>
+                  Switch versions from this same capture. Pitch focus, note
+                  direction, and music mode stay the same. Instruments are
+                  assigned automatically in each version.
+                </p>
+              </div>
+              <div
+                className="sensitivity-version-buttons"
+                role="group"
+                aria-label="Detection detail version"
+              >
+                {SENSITIVITY_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={
+                      result.activeSensitivity === option.id ? "selected" : ""
+                    }
+                    aria-pressed={result.activeSensitivity === option.id}
+                    onClick={() => showSensitivityVersion(option.id)}
+                  >
+                    <strong>{option.label}</strong>
+                    <span>{result.variants[option.id].notes.length} notes</span>
+                  </button>
+                ))}
               </div>
             </div>
             <div className="preview-player">

@@ -23,9 +23,14 @@ video directly on YouTube and use the two-tab fallback.
 **Detection detail** controls how readily quieter and shorter notes are kept.
 The default **Balanced** profile recovers substantially more short notes than
 the original settings without accepting every weak activation. Choose **More
-notes** for particularly quiet or fast performances. **Pitch focus** can limit
-detection to the low, middle, or high register when sounds outside the
-instrument's range are creating unwanted notes. The default **Wide · A0–C8**
+notes** for particularly quiet or fast performances, or **Cleaner** to remove
+more uncertain detections. Every capture produces all three versions from one
+model inference, so the result player can switch among them immediately. Pitch
+focus, note direction, and transcription mode remain unchanged. Manual note
+corrections are retained independently in the version where they were made.
+**Pitch focus** can limit detection to the low, middle, or high register when
+sounds outside the instrument's range are creating unwanted notes. The default
+**Wide · A0–C8**
 mode applies a gradual confidence boost to the lowest and highest model octaves
 so quiet bass and treble notes are less likely to be dropped. A0–C8 is the
 Basic Pitch model's fixed output range.

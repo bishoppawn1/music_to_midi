@@ -11,6 +11,13 @@ generation run locally in the visitor's browser. The web app is served entirely
 by GitHub Pages and has no hosted audio bridge. Details are in
 [`web/README.md`](web/README.md).
 
+Each capture produces **More notes**, **Balanced**, and **Cleaner** detection
+versions from the same model analysis. The player can switch between them
+instantly without recording or running the model again. Pitch focus, note
+direction, and transcription mode remain fixed across the three versions.
+Instruments are assigned automatically within each version, while manual note
+edits are retained separately in the version where they were made.
+
 The source for the interface lives in [`web/`](web/). The command-line
 pipeline below remains available for local use and development.
 

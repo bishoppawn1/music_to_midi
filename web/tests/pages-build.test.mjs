@@ -19,6 +19,7 @@ test("GitHub Pages root is the converter application", async () => {
     instrumentPolyphony,
     instrumentArrangement,
     midiOutput,
+    sensitivityVersions,
     packageJson,
     assets,
   ] = await Promise.all([
@@ -36,6 +37,7 @@ test("GitHub Pages root is the converter application", async () => {
     readFile(new URL("../app/instrument-polyphony.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/instrument-arrangement.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/midi-output.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/sensitivity-versions.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("site-assets/", root)),
   ]);
@@ -51,6 +53,14 @@ test("GitHub Pages root is the converter application", async () => {
   assert.match(page, /selfBrowserSurface:\s*"include"/);
   assert.match(page, /suppressLocalAudioPlayback:\s*false/);
   assert.match(page, /Detection detail/);
+  assert.match(page, /DETECTION DETAIL VERSIONS/);
+  assert.match(page, /Switch versions from this same capture/);
+  assert.match(page, /Instruments are\s+assigned automatically in each version/);
+  assert.match(page, /SENSITIVITY_OPTIONS\.map\(async/);
+  assert.match(page, /showSensitivityVersion/);
+  assert.match(page, /result\.variants\[option\.id\]\.notes\.length/);
+  assert.match(sensitivityVersions, /activateSensitivityVersion/);
+  assert.match(sensitivityVersions, /sensitivityVersionUrls/);
   assert.match(page, /Pitch focus/);
   assert.match(page, /useState<SensitivityId>\("balanced"\)/);
   assert.match(page, /recoverPitchEdges\(frames, pitchRange, 1\.2\)/);

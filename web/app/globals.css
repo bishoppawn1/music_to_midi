@@ -374,6 +374,54 @@ h1 em {
 .preview-button { background: transparent; color: white; cursor: pointer; font-weight: 800; }
 .preview-button:hover { background: white; color: var(--violet); }
 .download-button { border-color: var(--acid); gap: 15px; }
+.sensitivity-switcher {
+  margin-top: 30px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 18px;
+  border: 1px solid rgba(255,255,255,.42);
+  background: rgba(16,8,49,.23);
+}
+.sensitivity-switcher > div:first-child > span {
+  color: var(--acid);
+  font: 800 10px/1 monospace;
+  letter-spacing: .12em;
+}
+.sensitivity-switcher p {
+  margin: 8px 0 0;
+  color: rgba(255,255,255,.7);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.sensitivity-version-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.sensitivity-version-buttons button {
+  min-height: 62px;
+  padding: 10px 13px;
+  border: 1px solid rgba(255,255,255,.55);
+  border-right: 0;
+  display: grid;
+  gap: 5px;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  text-align: left;
+}
+.sensitivity-version-buttons button:last-child { border-right: 1px solid rgba(255,255,255,.55); }
+.sensitivity-version-buttons button:hover,
+.sensitivity-version-buttons button.selected {
+  background: var(--acid);
+  color: var(--violet);
+}
+.sensitivity-version-buttons strong { font-size: 13px; }
+.sensitivity-version-buttons span {
+  font: 700 10px/1 monospace;
+  opacity: .72;
+}
 .preview-player {
   margin-top: 30px;
   padding: 16px;
@@ -610,6 +658,7 @@ footer p { margin: 0; color: rgba(255,255,255,.55); font-size: 12px; }
   .method-grid article { min-height: 190px; padding: 24px 0; border-right: 0; border-bottom: 1px solid; }
   .result-actions { width: 100%; }
   .result-actions > * { flex: 1; }
+  .sensitivity-switcher { grid-template-columns: 1fr; }
   .preview-player { grid-template-columns: 1fr; }
   .note-editor-actions { width: 100%; }
   .note-editor-actions button { flex: 1; }
@@ -622,6 +671,9 @@ footer p { margin: 0; color: rgba(255,255,255,.55); font-size: 12px; }
   .converter { box-shadow: 8px 8px 0 var(--acid); }
   .form-foot span:last-child { display: none; }
   .result-actions { flex-direction: column; }
+  .sensitivity-version-buttons { grid-template-columns: 1fr; }
+  .sensitivity-version-buttons button { border-right: 1px solid rgba(255,255,255,.55); border-bottom: 0; }
+  .sensitivity-version-buttons button:last-child { border-bottom: 1px solid rgba(255,255,255,.55); }
 }
 
 @media (prefers-reduced-motion: reduce) {
